@@ -1,11 +1,3 @@
-#ifndef FOUNDATION_ACE_FRAMEWORKS_CORE_COMPONENTS_NG_PATTERN_FLEX_SMART_LAYOUT_ALGORITHM_H
-#define FOUNDATION_ACE_FRAMEWORKS_CORE_COMPONENTS_NG_PATTERN_FLEX_SMART_LAYOUT_ALGORITHM_H
-
-#include "core/components/common/layout/constants.h"
-#include "core/components_ng/layout/layout_wrapper.h"
-#include "core/components_ng/pattern/flex/flex_layout_styles.h"
-#include "core/components_ng/pattern/z3/include/z3++.h"
-
 #include "smart_layout_node.h"
 
 namespace HHHH::HHH::HH {
@@ -20,27 +12,48 @@ public:
     SmartLayoutAlgorithm() = default;
     ~SmartLayoutAlgorithm() = default;
 
-    // Main smart layout functions
+    // 对外入口：分别处理纵向布局和横向布局
     void SmartColumnLayout(LayoutWrapper* layoutWrapper);
     void SmartRowLayout(LayoutWrapper* layoutWrapper);
 
 private:
-    // Helper function for common layout logic
+    // 统一主流程：收集数据 -> 建模 -> 求解 -> 回写
     void PerformSmartLayout(LayoutWrapper* layoutWrapper, LayoutType layoutType);
 
+    // 对齐配置（来自 FlexLayoutProperty）
     FlexAlign mainAxisAlign_ = FlexAlign::FLEX_START;
     FlexAlign crossAxisAlign_ = FlexAlign::FLEX_START;
 
-    // Smart layout constraint generation functions
+    // 为不同方向添加约束
     void addColumnLayout(z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent);
     void addRowLayout(z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent);
-    void AddDefaultConstraints(z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent, std::shared_ptr<SmartLayoutNode> child);
-    
-    // Utility functions
+
+    // 通用基础约束：非负 + 子组件在父组件内
+    void AddDefaultConstraints(
+        z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent, std::shared_ptr<SmartLayoutNode> child);
+
+    // 交叉轴对齐约束（例如 Column 的 X 对齐 / Row 的 Y 对齐）
+    void AddCrossAxisAlignmentConstraints(
+        z3::optimize& solver,
+        std::shared_ptr<SmartLayoutNode> parent,
+        std::shared_ptr<SmartLayoutNode> child,
+        LayoutType layoutType);
+
+    // 主轴对齐约束（FLEX_START/CENTER/FLEX_END）
+    void AddMainAxisAlignmentConstraints(
+        z3::optimize& solver,
+        std::shared_ptr<SmartLayoutNode> parent,
+        LayoutType layoutType,
+        const z3::expr& mainAxisOffset,
+        const z3::expr& betweenGap);
+
+    // 快速判定：空间充足时可跳过求解器（仅在 start/start 场景）
     bool IsColumnSpaceEnough(LayoutWrapper* layoutWrapper);
+    bool IsRowSpaceEnough(LayoutWrapper* layoutWrapper);
+
+    // 把求得的 sizeScale 应用到真实节点
     SizeF ItermScale(const RefPtr<LayoutWrapper>& iterm, float scale);
 };
 
 } // namespace HHHH::HHH::HH
 
-#endif // FOUNDATION_ACE_FRAMEWORKS_CORE_COMPONENTS_NG_PATTERN_FLEX_SMART_LAYOUT_ALGORITHM_H
