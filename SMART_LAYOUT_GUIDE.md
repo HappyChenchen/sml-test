@@ -5,7 +5,7 @@
 这套算法把 Flex 布局转成“约束优化问题”：
 - 在父容器固定尺寸下，求每个子项的最终位置和尺寸；
 - 当空间不足时，自动缩放（而不是直接溢出）；
-- 优先保持组件尺寸尽量大（最大化 `sizeScale`）。
+- 主轴非 `SPACE_*` 模式下先统一缩小间距，再在必要时缩小尺寸。
 
 ## 2. 输入与输出
 
@@ -99,14 +99,17 @@
 
 ### `FLEX_START`
 - `startPos - parentStart = headBase * spaceScale`
+- `parentEnd - endPos = tailBase * spaceScale`
 - `mainAxisOffset = 0`
 - `betweenGap = 0`
 
 ### `CENTER`
-- `startPos - parentStart = parentEnd - endPos`
+- `startPos - parentStart = headBase * spaceScale + mainAxisOffset`
+- `parentEnd - endPos = tailBase * spaceScale + mainAxisOffset`
 - `betweenGap = 0`
 
 ### `FLEX_END`
+- `startPos - parentStart = headBase * spaceScale + mainAxisOffset`
 - `parentEnd - endPos = tailBase * spaceScale`
 - `betweenGap = 0`
 
@@ -126,12 +129,13 @@
 ## 6. 优化目标
 
 当前目标函数：
-- `maximize(spaceScale)`（一级目标）
-- `maximize(sizeScale)`（二级目标）
+- `maximize(sizeScale)`（一级目标）
+- `maximize(spaceScale)`（二级目标）
 
 含义：
-- 在满足所有约束时，优先保持间距按统一比例缩放；
-- 在 `spaceScale` 最优前提下，再尽量让子项尺寸更大；
+- 在满足所有约束时，优先保持子项尺寸尽量大；
+- 在 `sizeScale` 最优前提下，再尽量保留间距比例；
+- 等价执行顺序：先压缩 `spaceScale`，仅当 `spaceScale` 到极限仍不可行时再压缩 `sizeScale`；
 - `betweenGap` 作为 `SPACE_*` 模式下的可行性调节量。
 
 ## 7. 代码对应关系
