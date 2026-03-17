@@ -1,333 +1,199 @@
-﻿# Smart Layout 代码与公式说明（更新版）
+﻿# Smart Layout Guide（按容器分类）
 
-## 1. 目标
+## 1. 文档范围
+本文只描述当前代码中的容器布局规则：
+- `Linear 容器`：`COLUMN / ROW`（约束求解版）
+- `Flex 容器`：`ROW / COLUMN + wrap/wrap-reverse`（分行启发式版）
 
-这套算法把 Flex 布局转成“约束优化问题”：
-- 在父容器固定尺寸下，求每个子项的最终位置和尺寸；
-- 当空间不足时，自动缩放（而不是直接溢出）；
-- 主轴非 `SPACE_*` 模式下先统一缩小间距，再在必要时缩小尺寸。
+本文不包含：测试说明、历史变更记录、手算用例。
 
-## 2. 输入与输出
+## 2. 通用符号
+- 父容器：
+  - 位置：`x_p, y_p`
+  - 尺寸：`W_p, H_p`
+- 子项 `i`：
+  - 原始尺寸：`w_i0, h_i0`
+  - 求解后位置：`x_i, y_i`
+  - 求解后尺寸：`w_i, h_i`
+- 缩放变量：
+  - `sizeScale`：尺寸缩放
+  - `spaceScale`：间距缩放
 
-### 输入（已知量）
-- 父容器：`W_parent`, `H_parent`
-- 子项原始尺寸：`w_i0`, `h_i0`
-- 子项原始间距（从初始几何提取）：
-  - 纵向：`top_i`, `bottom_i`
-  - 横向：`left_i`, `right_i`
-- 布局方向：`COLUMN` 或 `ROW`
-- 对齐策略：
-  - 主轴：`mainAxisAlign_`
-  - 交叉轴：
-    - `COLUMN` 使用 `horizontalAlign_`（`HorizontalAlign::START/CENTER/END`）
-    - `ROW` 使用 `verticalAlign_`（`VerticalAlign::TOP/CENTER/BOTTOM`）
+边界约束（两类容器通用）：
+- `x_i >= x_p`
+- `y_i >= y_p`
+- `x_i + w_i <= x_p + W_p`
+- `y_i + h_i <= y_p + H_p`
 
-### 输出（求解结果）
-- 全局尺寸缩放：`sizeScale`
-- 全局间距缩放：`spaceScale`
-- 主轴均分间距变量：`betweenGap`（仅 `SPACE_*` 使用）
-- 主轴整体偏移：`mainAxisOffset`
-- 每个子项的最终：`x_i`, `y_i`, `w_i`, `h_i`
+---
 
-## 3. 核心变量与约束
+## 3. Linear 容器（COLUMN / ROW）
+对应代码：`smart_layout_algorithm.cpp`（`PerformSmartLayout` + `addLinearLayout`）
 
-### 3.1 尺寸缩放
-对每个子项 `i`：
-- `w_i = w_i0 * sizeScale`
-- `h_i = h_i0 * sizeScale`
+### 3.1 支持的对齐方式
+- 主轴（`FlexAlign`）：
+  - `FLEX_START / CENTER / FLEX_END / SPACE_BETWEEN / SPACE_AROUND / SPACE_EVENLY`
+- 侧轴：
+  - `COLUMN` 使用 `HorizontalAlign`：`START / CENTER / END`
+  - `ROW` 使用 `VerticalAlign`：`TOP / CENTER / BOTTOM`
 
-边界：
-- `0 <= sizeScale <= 1`
-- `0 <= spaceScale <= 1`
-- `betweenGap >= 0`
-- `mainAxisOffset >= 0`
+### 3.2 支持的属性
+- 布局方向：`COLUMN / ROW`
+- 主轴对齐：`mainAxisAlign_`
+- 侧轴对齐：方向映射后的 `horizontalAlign_ / verticalAlign_`
+- 统一缩放：`sizeScale`、`spaceScale`
 
-### 3.2 几何边界约束（所有模式通用）
-- `x_i >= x_parent`
-- `y_i >= y_parent`
-- `x_i + w_i <= x_parent + W_parent`
-- `y_i + h_i <= y_parent + H_parent`
+### 3.3 核心变量
+- 尺寸：
+  - `w_i = w_i0 * sizeScale`
+  - `h_i = h_i0 * sizeScale`
+- 主轴变量：
+  - `mainAxisOffset >= 0`
+  - `betweenGap >= 0`（仅 `SPACE_*` 模式主导）
 
-### 3.3 交叉轴对齐约束
+### 3.4 主轴链式公式
+`COLUMN`（主轴 = `Y`）：
+- 首项：
+  - 非 `SPACE_*`：`y_0 = y_p + top_0 * spaceScale + mainAxisOffset`
+  - `SPACE_*`：`y_0 = y_p + mainAxisOffset`
+- 后续：
+  - 非 `SPACE_*`：`y_i = y_{i-1} + h_{i-1} + bottom_{i-1} * spaceScale`
+  - `SPACE_*`：`y_i = y_{i-1} + h_{i-1} + betweenGap`
 
-#### Column（交叉轴是 X）
-- `HorizontalAlign::START`：`x_i = x_parent`
-- `HorizontalAlign::CENTER`：左右留白相等
-- `HorizontalAlign::END`：`x_i + w_i = x_parent + W_parent`
+`ROW`（主轴 = `X`）：
+- 首项：
+  - 非 `SPACE_*`：`x_0 = x_p + left_0 * spaceScale + mainAxisOffset`
+  - `SPACE_*`：`x_0 = x_p + mainAxisOffset`
+- 后续：
+  - 非 `SPACE_*`：`x_i = x_{i-1} + w_{i-1} + right_{i-1} * spaceScale`
+  - `SPACE_*`：`x_i = x_{i-1} + w_{i-1} + betweenGap`
 
-#### Row（交叉轴是 Y）
-- `VerticalAlign::TOP`：`y_i = y_parent`
-- `VerticalAlign::CENTER`：上下留白相等
-- `VerticalAlign::BOTTOM`：`y_i + h_i = y_parent + H_parent`
-
-## 4. 主轴公式（重点）
-
-### 4.1 Column 主轴链式公式（Y 方向）
-
-第一个子项：
-- 非 `SPACE_*`：
-  - `y_0 = y_parent + top_0 * spaceScale + mainAxisOffset`
-- `SPACE_*`：
-  - `y_0 = y_parent + mainAxisOffset`
-
-后续子项（`i > 0`）：
-- 非 `SPACE_*`：
-  - `y_i = y_{i-1} + h_{i-1} + bottom_{i-1} * spaceScale`
-- `SPACE_*`：
-  - `y_i = y_{i-1} + h_{i-1} + betweenGap`
-
-### 4.2 Row 主轴链式公式（X 方向）
-
-第一个子项：
-- 非 `SPACE_*`：
-  - `x_0 = x_parent + left_0 * spaceScale + mainAxisOffset`
-- `SPACE_*`：
-  - `x_0 = x_parent + mainAxisOffset`
-
-后续子项（`i > 0`）：
-- 非 `SPACE_*`：
-  - `x_i = x_{i-1} + w_{i-1} + right_{i-1} * spaceScale`
-- `SPACE_*`：
-  - `x_i = x_{i-1} + w_{i-1} + betweenGap`
-
-## 5. 主轴对齐公式（含三种 SPACE）
-
+### 3.5 主轴对齐约束
 设：
-- `startPos` = 内容块起点（首子项主轴起点）
-- `endPos` = 内容块终点（尾子项主轴终点）
-- `parentStart` / `parentEnd` = 父容器主轴起终点
-- `headBase` = 初始首部间距（未缩放）
-  - `Column`：第一个子项到父容器顶部的间距（`first.edgesSpace.top`）
-  - `Row`：第一个子项到父容器左侧的间距（`first.edgesSpace.left`）
-- `tailBase` = 初始尾部间距（未缩放）
-  - `Column`：最后一个子项到父容器底部的间距（`last.edgesSpace.bottom`）
-  - `Row`：最后一个子项到父容器右侧的间距（`last.edgesSpace.right`）
-- `headBase * spaceScale` / `tailBase * spaceScale` = 首尾间距按统一比例缩小后的值（`spaceScale ∈ [0,1]`）
+- `startPos`：内容块起点（首项主轴起点）
+- `endPos`：内容块终点（末项主轴终点）
+- `parentStart / parentEnd`：父容器主轴边界
 
-### `FLEX_START`
-- `startPos - parentStart = headBase * spaceScale`
-- `parentEnd - endPos >= tailBase * spaceScale`
-- `mainAxisOffset = 0`
-- `betweenGap = 0`
+公式：
+- `FLEX_START`：`mainAxisOffset = 0`，`betweenGap = 0`
+- `CENTER`：`startPos - parentStart = parentEnd - endPos`
+- `FLEX_END`：`endPos = parentEnd`
+- `SPACE_BETWEEN`：`startPos = parentStart`，`endPos = parentEnd`
+- `SPACE_AROUND`：`startPos - parentStart = betweenGap / 2`，`parentEnd - endPos = betweenGap / 2`
+- `SPACE_EVENLY`：`startPos - parentStart = betweenGap`，`parentEnd - endPos = betweenGap`
 
-### `CENTER`
-- `startPos - parentStart = headBase * spaceScale + mainAxisOffset`
-- `parentEnd - endPos = tailBase * spaceScale + mainAxisOffset`
-- `betweenGap = 0`
+### 3.6 侧轴对齐公式
+`COLUMN`（侧轴 = `X`）：
+- `START`：`x_i = x_p`
+- `CENTER`：`x_i - x_p = (x_p + W_p) - (x_i + w_i)`
+- `END`：`x_i + w_i = x_p + W_p`
 
-### `FLEX_END`
-- `startPos - parentStart = headBase * spaceScale + mainAxisOffset`
-- `parentEnd - endPos = tailBase * spaceScale`
-- `betweenGap = 0`
+`ROW`（侧轴 = `Y`）：
+- `TOP`：`y_i = y_p`
+- `CENTER`：`y_i - y_p = (y_p + H_p) - (y_i + h_i)`
+- `BOTTOM`：`y_i + h_i = y_p + H_p`
 
-### `SPACE_BETWEEN`
-- `startPos = parentStart`
-- `endPos = parentEnd`
-- 中间间距统一由 `betweenGap` 提供
+### 3.7 优化目标
+- 一阶段目标优先级：
+  - `maximize(sizeScale)`
+  - `maximize(spaceScale)`
+- 语义：先尽量保尺寸，再尽量保间距。
 
-### `SPACE_AROUND`
-- `startPos - parentStart = betweenGap / 2`
-- `parentEnd - endPos = betweenGap / 2`
+---
 
-### `SPACE_EVENLY`
-- `startPos - parentStart = betweenGap`
-- `parentEnd - endPos = betweenGap`
+## 4. Flex 容器（ROW / COLUMN + WRAP）
+对应代码：`smart_flex_layout_algorithm.cpp`（`SmartFlexLayoutAlgorithm::Layout`）
 
-## 6. 优化目标
+### 4.1 支持的对齐方式
+- 主轴（`FlexAlign`）：
+  - `FLEX_START / CENTER / FLEX_END / SPACE_BETWEEN / SPACE_AROUND / SPACE_EVENLY`
+- 侧轴（`SmartItemAlign`）：
+  - `AUTO / START / CENTER / END / STRETCH / BASELINE`
 
-当前目标函数：
-- `maximize(sizeScale)`（一级目标）
-- `maximize(spaceScale)`（二级目标）
+### 4.2 支持的属性
+- 方向：`SmartFlexDirection::ROW / COLUMN`
+- 换行：`SmartFlexWrapMode::NO_WRAP / WRAP / WRAP_REVERSE`
+- 间距：`mainGap`、`crossGap`
+- 侧轴默认对齐：`containerItemAlign`
 
-含义：
-- 在满足所有约束时，优先保持子项尺寸（先不缩宽高）；
-- 在 `sizeScale` 最优前提下，再尽量保留间距比例；
-- 等价执行顺序：先压缩 `spaceScale`，仅当 `spaceScale` 到极限仍不可行时再压缩 `sizeScale`；
-- 约束补充（仅 `FLEX_START/CENTER/FLEX_END`）：`sizeScale < 1 => spaceScale = 0`（保证“间距先归零，再缩尺寸”）；
-- `betweenGap` 作为 `SPACE_*` 模式下的可行性调节量。
+`AUTO` 规则：
+- `itemAlign != AUTO`：用子项指定值
+- `itemAlign == AUTO`：用 `containerItemAlign`
+- 两者都 `AUTO`：兜底 `START`
 
-## 7. 代码对应关系
+### 4.3 计算阶段
+1. `BuildSnapshots`：采集子项几何并复位缩放。
+2. `BuildLines`：按主轴累计尺寸 + `mainGap` 做分行。
+3. `SolveMainAxisForLine`：每行做主轴缩放与对齐。
+4. `PlaceLinesOnCrossAxis`：行在侧轴排布，支持 `wrap-reverse`。
+5. `PlaceChildrenInLine`：行内侧轴对齐（含 `stretch`、`baseline`）。
+6. `WriteBack`：回写坐标与缩放。
 
-- 主流程：`PerformSmartLayout`
-- 基础约束：`AddDefaultConstraints`
-- 交叉轴约束：`AddCrossAxisAlignmentConstraints`
-- 主轴对齐约束：`AddMainAxisAlignmentConstraints`
-- 方向约束组装：`addColumnLayout` / `addRowLayout`
+### 4.4 分行规则
+设当前行主轴占用 `M`，新子项主轴尺寸 `m_i`：
+- 预测值：
+  - 首项：`pred = m_i`
+  - 非首项：`pred = M + mainGap + m_i`
+- 当 `wrap != NO_WRAP` 且 `pred > parentMain` 时换行。
 
-## 8. 已落地优化清单
+### 4.5 行内主轴缩放与对齐
+设一行：
+- 子项主轴总和 `S = Σ itemMain`
+- 原始总间距 `G = mainGap * (n - 1)`
+- 可用主轴 `P = parentMain`
 
-1. `mainAxisAlign_` 完整支持：
-- `FLEX_START / CENTER / FLEX_END / SPACE_BETWEEN / SPACE_AROUND / SPACE_EVENLY`
+非 `SPACE_*`：
+- 若 `S + G <= P`：`sizeScale=1, spaceScale=1`
+- 否则先压间距：
+  - `spaceScale = clamp((P - S) / G, 0, 1)`（仅 `S < P` 且 `G>0`）
+- 若仍超限再压尺寸：
+  - `sizeScale = clamp(P / S, 0, 1)`
 
-2. Row 模式补齐 `spaceScale` 上下界：
-- `0 <= spaceScale <= 1`
+`SPACE_*`：
+- 主轴间距由自由空间二次分配，若 `S > P` 先按 `sizeScale = P / S` 缩尺寸。
 
-3. 空间充足短路：
-- `start/start` 且空间足够时跳过求解器
-- 短路返回前会将子项 `transformScale` 复位到 `1.0`，避免沿用上次缩小结果
+自由空间：
+- `free = max(0, P - usedMain)`
 
-4. 间距字段一致化：
-- Column 使用 `top/bottom`
-- Row 使用 `left/right`
+对应 `FlexAlign`：
+- `FLEX_START`：`leading = 0`
+- `CENTER`：`leading = free / 2`
+- `FLEX_END`：`leading = free`
+- `SPACE_BETWEEN`：`gap = free / (n - 1)`
+- `SPACE_AROUND`：`gap = free / n`，`leading = gap / 2`
+- `SPACE_EVENLY`：`gap = free / (n + 1)`，`leading = gap`
 
-5. 交叉轴默认回退值：
-- 从 `GetCrossAxisAlignValue(FlexAlign::CENTER)` 读取后：
-  - `COLUMN` 映射到 `horizontalAlign_`
-  - `ROW` 映射到 `verticalAlign_`
+### 4.6 行在侧轴排布（含 wrap-reverse）
+设行侧轴尺寸总和 `L = Σ lineCross + crossGap*(lineCount-1)`，父侧轴可用 `C`：
+- 若 `L > C`：整体侧轴缩放 `crossScale = C / L`
+- 行间距：`crossGapSolved = crossGap * crossScale`
 
-6. 大量中文注释：
-- 约束、变量、阶段、回写流程都已补充
+行起点：
+- `WRAP`：从 `0` 向正方向累计
+- `WRAP_REVERSE`：从 `parentCross` 反向累计
 
-7. 调试日志：
-- 在短路分支与求解回写分支输出子项位置日志，便于按元素 id 排查偏移问题
-- 求解回写日志统一为一条精简格式 `smart_layout compact`，字段仅包含：
-  - 父容器：`parentXYWH`
-  - 子容器：`childRelXY`（相对父容器）和 `childWH`
-  - 缩放：`spaceScale`、`sizeScale`
+### 4.7 子项侧轴对齐公式
+设当前行侧轴起点 `lineStart`，行侧轴尺寸 `lineCross`，子项侧轴尺寸 `itemCross`。
 
-8. 放大回涨稳定性修复：
-- 在进入求解前，先把所有子项 `transformScale` 复位为 `1.0` 并重新布局
-- 避免“上一次缩小后的尺寸”被当作下一次求解基准，导致父容器放大后子项仍不回涨
+- `START`：`itemCrossPos = lineStart`
+- `CENTER`：`itemCrossPos = lineStart + (lineCross - itemCross)/2`
+- `END`：`itemCrossPos = lineStart + (lineCross - itemCross)`
+- `STRETCH`：通过非等比缩放使 `itemCross -> lineCross`
+- `BASELINE`（一期仅 `ROW`）：
+  - `ascent_i = baselineOffset_i`
+  - `descent_i = itemCross_i - baselineOffset_i`
+  - `lineAscent = max(ascent_i)`
+  - `itemCrossPos = lineStart + (lineAscent - ascent_i)`
 
-9. 首尾间距改为父容器相对坐标：
-- `top/left` 不再直接用子项绝对偏移，而是 `childOffset - parentOffset`
-- `bottom/right` 也按父容器相对坐标计算，避免 `initTailGap` 在父组件位移后出现负值假象
+备注：一期基线兜底采用“子项底边基线”（`baselineOffset = itemHeight`）。
 
-## 9. 一个简短例子（SPACE_EVENLY）
+---
 
-父容器主轴长度记为 `L`，三个子项主轴总长度为 `S`：
-- 内容外共有 4 段等距（前、两中间、后）
-- 每段就是 `betweenGap`
-- 所以有：`S + 4 * betweenGap = L`
-
-求解器会自动求出 `betweenGap`，同时满足边界与尺寸缩放约束。
-
-## 10. 手算示例（一步一步代入）
-
-### 10.1 Row + SPACE_EVENLY（完整）
-
-已知：
-- 父容器宽度：`W_parent = 500`
-- 3 个子项原始宽度：`w_0 = 80`, `w_1 = 120`, `w_2 = 100`
-- 假设空间足够，求解后 `sizeScale = 1`（即不缩放）
-- `mainAxisAlign_ = SPACE_EVENLY`
-
-第 1 步：先算内容总宽 `S`
-- `S = 80 + 120 + 100 = 300`
-
-第 2 步：`SPACE_EVENLY` 的间距关系
-- 3 个子项会把主轴分成 4 段等距（前、两中间、后）
-- 设每段都是 `betweenGap = g`
-- 方程：`S + 4g = W_parent`
-- 代入：`300 + 4g = 500`
-- 解得：`g = 50`
-
-第 3 步：按链式公式算每个 `x`
-- 首项：`x_0 = x_parent + g`
-  - 若 `x_parent = 0`，则 `x_0 = 50`
-- 第二项：`x_1 = x_0 + w_0 + g = 50 + 80 + 50 = 180`
-- 第三项：`x_2 = x_1 + w_1 + g = 180 + 120 + 50 = 350`
-
-第 4 步：验算尾部间距
-- 第三项右边界：`x_2 + w_2 = 350 + 100 = 450`
-- 右侧剩余：`500 - 450 = 50 = g`
-- 与 `SPACE_EVENLY` 一致，成立。
-
-最终输出（主轴）：
-- `betweenGap = 50`
-- `x_0 = 50`, `x_1 = 180`, `x_2 = 350`
-
-### 10.2 Column + SPACE_AROUND（简版）
-
-已知：
-- 父容器高度：`H_parent = 420`
-- 两个子项高度：`h_0 = 100`, `h_1 = 140`
-- `sizeScale = 1`
-- `mainAxisAlign_ = SPACE_AROUND`
-
-内容总高：
-- `S = 100 + 140 = 240`
-
-`SPACE_AROUND` 规则：
-- 两端留白是内部间距的一半
-- 设内部间距为 `g = betweenGap`，两端各 `g/2`
-- 方程：`S + g + g/2 + g/2 = H_parent`，即 `S + 2g = H_parent`
-- `240 + 2g = 420`，解得 `g = 90`
-- 所以顶部留白和底部留白都为 `45`
-
-主轴位置：
-- `y_0 = y_parent + 45`
-- `y_1 = y_0 + h_0 + 90`
-
-## 11. 2026-03-17 同步说明
-
-### 11.1 侧轴对齐实现与文档对齐
-- 代码侧轴对齐已按方向分流：
-  - `COLUMN` 使用 `HorizontalAlign::START/CENTER/END`
-  - `ROW` 使用 `VerticalAlign::TOP/CENTER/BOTTOM`
-- `PerformSmartLayout` 中会先读取 `GetCrossAxisAlignValue(...)`，再映射到上述方向专用枚举。
-- 短路优化（跳过求解器）也改为读取方向专用枚举，不再直接依赖 `FlexAlign` 侧轴字段。
-
-### 11.2 注释增强
-- `smart_layout_algorithm.cpp` 已新增更细粒度注释，覆盖：
-  - 通用边界约束（非负 + 子项不越界）
-  - 侧轴对齐约束分流
-  - 主轴对齐约束职责边界
-  - Column/Row 建模策略
-  - 整体求解流程（采集 -> 短路 -> 建模 -> 求解 -> 回写）
-
-## 12. 2026-03-18 同步说明
-
-### 12.1 Column/Row 解耦
-- `addColumnLayout` 与 `addRowLayout` 的主轴建模逻辑已提取为统一入口：
-  - `addLinearLayout(z3::optimize&, std::shared_ptr<SmartLayoutNode>, LayoutType)`
-- `COLUMN/ROW` 仅负责传入方向，核心约束只维护一份，减少双分支改动不一致风险。
-- 解耦后保持原有行为不变：
-  - `sizeScale`、`spaceScale` 约束与目标不变
-  - 主轴链式约束公式不变
-  - 主轴/侧轴对齐公式不变
-
-### 12.2 JSON 用例测试
-- 新增 JSON 树输入用例：`tests/data/smart_layout_overflow_tree.json`
-- 新增运行脚本：`tests/smart_layout_json_case_runner.py`
-- 新增用例说明：`tests/README.md`
-- 输出文件：`tests/output/smart_layout_overflow_result.json`
-
-覆盖范围：
-- 布局方向：`COLUMN`、`ROW`
-- 主轴对齐：`FLEX_START/CENTER/FLEX_END/SPACE_BETWEEN/SPACE_AROUND/SPACE_EVENLY`
-- 侧轴对齐：
-  - `COLUMN`: `START/CENTER/END`
-  - `ROW`: `TOP/CENTER/BOTTOM`
-- 父容器尺寸：3 组
-- 总结果条目：`2 * 3 * 6 * 3 = 108`
-
-### 12.3 HTML 可视化报告
-- 新增生成脚本：`tests/generate_smart_layout_html.py`
-- `tests/smart_layout_json_case_runner.py` 在生成 result JSON 后会自动生成 HTML 报告
-- 输入：
-  - 原始树状用例：`tests/data/smart_layout_overflow_tree.json`
-  - 求解结果：`tests/output/smart_layout_overflow_result.json`
-- 输出：
-  - `tests/output/smart_layout_overflow_report.html`
-
-页面结构与交互：
-- 左侧竖向 Tab：`COLUMN / ROW` 切换
-- 顶部用例下拉框：切换“父尺寸 + 主轴 + 侧轴”组合
-- 主体左右分栏：
-  - 左：原始未调整（可见溢出）
-  - 右：智能布局结果
-
-### 12.4 代码注释补强（h/cpp）
-- `smart_layout_algorithm.h`
-  - 新增类级与函数级中文注释，明确：
-    - 成员变量语义
-    - 方向分发关系
-    - 约束构建职责边界
-- `smart_layout_algorithm.cpp`
-  - 新增阶段化中文注释（读取配置 -> 短路 -> 建模 -> 求解 -> 回写）
-  - 对关键公式与分支增加语义说明：
-    - 默认边界约束
-    - 主轴对齐约束
-    - 侧轴对齐约束
-    - 首节点/后续节点链式约束
+## 5. 日志字段（两类容器统一）
+日志格式保持精简，仅输出：
+- 布局方式（`layout`）
+- 主轴对齐（`main`）
+- 侧轴对齐（`cross`）
+- `childId`、`parentId`
+- `parentXYWH`、`childXYWH`
+- `spacescale`、`sizescale`

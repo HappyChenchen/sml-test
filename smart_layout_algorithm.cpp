@@ -29,7 +29,16 @@ float CalculateSpaceBetween(const RefPtr<LayoutWrapper>& child1, const RefPtr<La
 
 const char* LayoutTypeToString(LayoutType layoutType)
 {
-    return (layoutType == LayoutType::COLUMN) ? "COLUMN" : "ROW";
+    switch (layoutType) {
+        case LayoutType::COLUMN:
+            return "COLUMN";
+        case LayoutType::ROW:
+            return "ROW";
+        case LayoutType::FLEX:
+            return "FLEX";
+        default:
+            return "UNKNOWN";
+    }
 }
 
 const char* MainAlignToString(FlexAlign align)
@@ -577,6 +586,11 @@ void SmartLayoutAlgorithm::SmartColumnLayout(LayoutWrapper* layoutWrapper)
 void SmartLayoutAlgorithm::SmartRowLayout(LayoutWrapper* layoutWrapper)
 {
     PerformSmartLayout(layoutWrapper, LayoutType::ROW);
+}
+
+void SmartLayoutAlgorithm::SmartFlexLayout(LayoutWrapper* layoutWrapper, const SmartFlexConfig& config)
+{
+    smartFlexLayoutAlgorithm_.Layout(layoutWrapper, config);
 }
 
 } // namespace HHHH::HHH::HH

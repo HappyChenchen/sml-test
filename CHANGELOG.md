@@ -48,3 +48,23 @@
 - `smart_layout_algorithm.cpp`
 - `SMART_LAYOUT_GUIDE.md`
 - `CHANGELOG.md`
+
+## 2026-03-18
+
+### 关键功能
+- 新增一阶段 Flex 独立引擎，支持 `wrap`、`wrap-reverse`、`baseline` 与 `ItemAlign::AUTO`。
+
+### 关键改动
+- 新增 `smart_flex_layout_algorithm.h/.cpp`：
+  - 采用“分行 -> 行内主轴求解 -> 行间侧轴放置 -> 回写”的四段流程。
+  - 主轴保持智能缩放策略：先压间距（`spacescale`），再压尺寸（`sizescale`）。
+  - `ItemAlign::AUTO` 回退到 `containerItemAlign`，双 AUTO 兜底 `START`。
+- 更新 `smart_layout_algorithm.h/.cpp`：
+  - 新增 `SmartFlexLayout(LayoutWrapper*, const SmartFlexConfig&)` 独立入口。
+  - `LayoutType` 补齐 `FLEX` 枚举项并完善字符串映射。
+
+### 关键代码
+- `smart_flex_layout_algorithm.h`
+- `smart_flex_layout_algorithm.cpp`
+- `smart_layout_algorithm.h`
+- `smart_layout_algorithm.cpp`
