@@ -32,6 +32,57 @@ VerticalAlign ToVerticalAlign(FlexAlign align)
     return VerticalAlign::CENTER;
 }
 
+const char* FlexAlignToString(FlexAlign align)
+{
+    if (align == FlexAlign::FLEX_START) {
+        return "FLEX_START";
+    }
+    if (align == FlexAlign::CENTER) {
+        return "CENTER";
+    }
+    if (align == FlexAlign::FLEX_END) {
+        return "FLEX_END";
+    }
+    if (align == FlexAlign::SPACE_BETWEEN) {
+        return "SPACE_BETWEEN";
+    }
+    if (align == FlexAlign::SPACE_AROUND) {
+        return "SPACE_AROUND";
+    }
+    if (align == FlexAlign::SPACE_EVENLY) {
+        return "SPACE_EVENLY";
+    }
+    return "UNKNOWN";
+}
+
+const char* HorizontalAlignToString(HorizontalAlign align)
+{
+    if (align == HorizontalAlign::START) {
+        return "START";
+    }
+    if (align == HorizontalAlign::CENTER) {
+        return "CENTER";
+    }
+    if (align == HorizontalAlign::END) {
+        return "END";
+    }
+    return "UNKNOWN";
+}
+
+const char* VerticalAlignToString(VerticalAlign align)
+{
+    if (align == VerticalAlign::TOP) {
+        return "TOP";
+    }
+    if (align == VerticalAlign::CENTER) {
+        return "CENTER";
+    }
+    if (align == VerticalAlign::BOTTOM) {
+        return "BOTTOM";
+    }
+    return "UNKNOWN";
+}
+
 // 计算两个相邻子项之间的间距（按布局方向）
 float CalculateSpaceBetween(const RefPtr<LayoutWrapper>& child1, const RefPtr<LayoutWrapper>& child2, LayoutType layoutType)
 {
@@ -316,10 +367,14 @@ bool SmartLayoutAlgorithm::IsRowSpaceEnough(LayoutWrapper* layoutWrapper)
 void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, LayoutType layoutType)
 {
     const char* layoutTypeStr = (layoutType == LayoutType::COLUMN) ? "COLUMN" : "ROW";
+    LOGI("smart_layout trigger_enter type:%{public}s wrapper:%{public}p", layoutTypeStr, layoutWrapper);
 
     // Step 1: 拉取 Flex 配置（主轴/交叉轴对齐）
     auto layoutProperty = AceType::DynamicCast<FlexLayoutProperty>(layoutWrapper->GetLayoutProperty());
-    CHECK_NULL_VOID(layoutProperty);
+    if (!layoutProperty) {
+        LOGI("smart_layout trigger_skip type:%{public}s reason:no_layout_property", layoutTypeStr);
+        return;
+    }
     mainAxisAlign_ = layoutProperty->GetMainAxisAlignValue(FlexAlign::FLEX_START);
     auto crossAxisAlign = layoutProperty->GetCrossAxisAlignValue(FlexAlign::CENTER);
     if (layoutType == LayoutType::COLUMN) {
@@ -327,10 +382,33 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     } else {
         verticalAlign_ = ToVerticalAlign(crossAxisAlign);
     }
+    if (layoutType == LayoutType::COLUMN) {
+        LOGI("smart_layout align type:%{public}s main:%{public}s(%{public}d) crossFlex:%{public}s(%{public}d) crossResolved:%{public}s",
+            layoutTypeStr,
+            FlexAlignToString(mainAxisAlign_),
+            static_cast<int>(mainAxisAlign_),
+            FlexAlignToString(crossAxisAlign),
+            static_cast<int>(crossAxisAlign),
+            HorizontalAlignToString(horizontalAlign_));
+    } else {
+        LOGI("smart_layout align type:%{public}s main:%{public}s(%{public}d) crossFlex:%{public}s(%{public}d) crossResolved:%{public}s",
+            layoutTypeStr,
+            FlexAlignToString(mainAxisAlign_),
+            static_cast<int>(mainAxisAlign_),
+            FlexAlignToString(crossAxisAlign),
+            static_cast<int>(crossAxisAlign),
+            VerticalAlignToString(verticalAlign_));
+    }
     const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
     if (children.empty()) {
+        LOGI("smart_layout trigger_skip type:%{public}s reason:no_children", layoutTypeStr);
         return;
     }
+    LOGI("smart_layout trigger_state type:%{public}s childCount:%{public}d mainAxisAlign:%{public}d crossAxisAlign:%{public}d",
+        layoutTypeStr,
+        static_cast<int>(children.size()),
+        static_cast<int>(mainAxisAlign_),
+        static_cast<int>(crossAxisAlign));
     auto parentSize = layoutWrapper->GetGeometryNode()->GetFrameSize();
     auto parentOffset = layoutWrapper->GetGeometryNode()->GetFrameOffset();
 
@@ -339,8 +417,10 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     bool isCrossStart = (layoutType == LayoutType::COLUMN) ? (horizontalAlign_ == HorizontalAlign::START)
                                                             : (verticalAlign_ == VerticalAlign::TOP);
     if (mainAxisAlign_ == FlexAlign::FLEX_START && isCrossStart) {
-        if ((layoutType == LayoutType::COLUMN && IsColumnSpaceEnough(layoutWrapper)) ||
-            (layoutType == LayoutType::ROW && IsRowSpaceEnough(layoutWrapper))) {
+        bool isSpaceEnough = (layoutType == LayoutType::COLUMN) ? IsColumnSpaceEnough(layoutWrapper)
+                                                                 : IsRowSpaceEnough(layoutWrapper);
+        if (isSpaceEnough) {
+            LOGI("smart_layout trigger_skip type:%{public}s reason:short_circuit_start_start_space_enough", layoutTypeStr);
             for (const auto& child : children) {
                 ItermScale(child, 1.0f);
                 if (child->GetHostNode() != nullptr) {
@@ -359,7 +439,7 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
                 float childMainSize =
                     (layoutType == LayoutType::COLUMN) ? childSize.Height() : childSize.Width();
                 float tailGap = parentMainSize - (childMainOffset + childMainSize);
-                LOGE("smart_layout short_circuit_reset type:%{public}s child:%{public}d "
+                LOGI("smart_layout short_circuit_reset type:%{public}s child:%{public}d "
                      "offset:[%{public}.2f %{public}.2f] size:[%{public}.2f %{public}.2f] "
                      "parentMainSize:%{public}.2f tailGap:%{public}.2f",
                     layoutTypeStr, childId, childOffset.GetX(), childOffset.GetY(), childSize.Width(), childSize.Height(),
@@ -367,9 +447,13 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
             }
             return;
         }
+        LOGI("smart_layout trigger_continue type:%{public}s reason:start_start_but_space_not_enough", layoutTypeStr);
+    } else {
+        LOGI("smart_layout trigger_continue type:%{public}s reason:need_solver_for_align", layoutTypeStr);
     }
 
     // Step 3: 创建求解器上下文
+    LOGI("smart_layout solver_start type:%{public}s", layoutTypeStr);
     z3::context ctx;
     z3::optimize solver(ctx);
 
@@ -486,7 +570,7 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         const float childRelativeY = offsetY - parentOffset.GetY();
         const float sizeScale = root->scaleInfo_.sizeScale.value;
         const float spaceScale = root->scaleInfo_.spaceScale.value;
-        LOGE("smart_layout compact type:%{public}s child:%{public}d "
+        LOGI("smart_layout compact type:%{public}s child:%{public}d "
              "parentXYWH:[%{public}.2f %{public}.2f %{public}.2f %{public}.2f] "
              "childRelXY:[%{public}.2f %{public}.2f] childWH:[%{public}.2f %{public}.2f] "
              "spaceScale:%{public}.4f sizeScale:%{public}.4f",
@@ -517,11 +601,13 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
 
 void SmartLayoutAlgorithm::SmartColumnLayout(LayoutWrapper* layoutWrapper)
 {
+    LOGI("smart_layout trigger_request type:COLUMN wrapper:%{public}p", layoutWrapper);
     PerformSmartLayout(layoutWrapper, LayoutType::COLUMN);
 }
 
 void SmartLayoutAlgorithm::SmartRowLayout(LayoutWrapper* layoutWrapper)
 {
+    LOGI("smart_layout trigger_request type:ROW wrapper:%{public}p", layoutWrapper);
     PerformSmartLayout(layoutWrapper, LayoutType::ROW);
 }
 
