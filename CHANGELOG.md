@@ -126,7 +126,7 @@
 - `AddCrossAxisAlignmentConstraints` 改为显式 `if (...) { ... } else { ... }` 结构，Row 逻辑不再依赖早返回的隐式分支。
 - 侧轴对齐改为方向专属枚举：
   - `COLUMN`：`HorizontalAlign::START/CENTER/END`
-  - `ROW`：`VerticalAlign::START/CENTER/END`
+  - `ROW`：`VerticalAlign::TOP/CENTER/BOTTOM`
 - 在 `PerformSmartLayout` 中将 `GetCrossAxisAlignValue(FlexAlign::FLEX_START)` 结果映射到对应枚举，并用于短路判定 `isCrossStart`。
 
 ### 影响文件
@@ -134,4 +134,37 @@
 - [smart_layout_algorithm.cpp](/d:/0_Work/sml-test/smart_layout_algorithm.cpp)
 - [SMART_LAYOUT_GUIDE.md](/d:/0_Work/sml-test/SMART_LAYOUT_GUIDE.md)
 - [CHANGELOG.md](/d:/0_Work/sml-test/CHANGELOG.md)
+
+## 2026-03-17（本次修改：交叉轴默认值同步为 CENTER）
+### 修改
+- 对齐成员默认值统一为居中：
+  - `horizontalAlign_ = HorizontalAlign::CENTER`
+  - `verticalAlign_ = VerticalAlign::CENTER`
+- 交叉轴配置读取默认值改为 `CENTER`：
+  - `GetCrossAxisAlignValue(FlexAlign::CENTER)`
+- 枚举映射兜底同步为居中：
+  - `ToHorizontalAlign` 默认返回 `HorizontalAlign::CENTER`
+  - `ToVerticalAlign` 默认返回 `VerticalAlign::CENTER`
+- 同步更新 `SMART_LAYOUT_GUIDE.md` 的默认回退说明。
+
+### 影响文件
+- [smart_layout_algorithm.h](/d:/0_Work/sml-test/smart_layout_algorithm.h)
+- [smart_layout_algorithm.cpp](/d:/0_Work/sml-test/smart_layout_algorithm.cpp)
+- [SMART_LAYOUT_GUIDE.md](/d:/0_Work/sml-test/SMART_LAYOUT_GUIDE.md)
+- [CHANGELOG.md](/d:/0_Work/sml-test/CHANGELOG.md)
 - [gitlog.md](/d:/0_Work/sml-test/gitlog.md)
+
+## 2026-03-17（本次修改：VerticalAlign 枚举命名调整）
+### 修改
+- `VerticalAlign` 命名从 `START/CENTER/END` 调整为 `TOP/CENTER/BOTTOM`。
+- 代码侧同步更新：
+  - `ToVerticalAlign` 映射：`FLEX_START -> TOP`，`FLEX_END -> BOTTOM`
+  - Row 交叉轴约束判断改为 `TOP/CENTER/BOTTOM`
+  - `start/start` 短路判定中的 Row 分支改为 `verticalAlign_ == TOP`
+- 文档侧同步更新 `SMART_LAYOUT_GUIDE.md` 中的 Row 交叉轴枚举说明。
+
+### 影响文件
+- [smart_layout_algorithm.h](/d:/0_Work/sml-test/smart_layout_algorithm.h)
+- [smart_layout_algorithm.cpp](/d:/0_Work/sml-test/smart_layout_algorithm.cpp)
+- [SMART_LAYOUT_GUIDE.md](/d:/0_Work/sml-test/SMART_LAYOUT_GUIDE.md)
+- [CHANGELOG.md](/d:/0_Work/sml-test/CHANGELOG.md)

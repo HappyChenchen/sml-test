@@ -20,7 +20,7 @@
   - 主轴：`mainAxisAlign_`
   - 交叉轴：
     - `COLUMN` 使用 `horizontalAlign_`（`HorizontalAlign::START/CENTER/END`）
-    - `ROW` 使用 `verticalAlign_`（`VerticalAlign::START/CENTER/END`）
+    - `ROW` 使用 `verticalAlign_`（`VerticalAlign::TOP/CENTER/BOTTOM`）
 
 ### 输出（求解结果）
 - 全局尺寸缩放：`sizeScale`
@@ -56,9 +56,9 @@
 - `HorizontalAlign::END`：`x_i + w_i = x_parent + W_parent`
 
 #### Row（交叉轴是 Y）
-- `VerticalAlign::START`：`y_i = y_parent`
+- `VerticalAlign::TOP`：`y_i = y_parent`
 - `VerticalAlign::CENTER`：上下留白相等
-- `VerticalAlign::END`：`y_i + h_i = y_parent + H_parent`
+- `VerticalAlign::BOTTOM`：`y_i + h_i = y_parent + H_parent`
 
 ## 4. 主轴公式（重点）
 
@@ -159,7 +159,7 @@
 - Row 使用 `left/right`
 
 5. 交叉轴默认回退值：
-- 从 `GetCrossAxisAlignValue(FlexAlign::FLEX_START)` 读取后：
+- 从 `GetCrossAxisAlignValue(FlexAlign::CENTER)` 读取后：
   - `COLUMN` 映射到 `horizontalAlign_`
   - `ROW` 映射到 `verticalAlign_`
 

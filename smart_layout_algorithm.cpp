@@ -19,7 +19,7 @@ HorizontalAlign ToHorizontalAlign(FlexAlign align)
     } else if (align == FlexAlign::FLEX_END) {
         return HorizontalAlign::END;
     }
-    return HorizontalAlign::START;
+    return HorizontalAlign::CENTER;
 }
 
 VerticalAlign ToVerticalAlign(FlexAlign align)
@@ -27,9 +27,9 @@ VerticalAlign ToVerticalAlign(FlexAlign align)
     if (align == FlexAlign::CENTER) {
         return VerticalAlign::CENTER;
     } else if (align == FlexAlign::FLEX_END) {
-        return VerticalAlign::END;
+        return VerticalAlign::BOTTOM;
     }
-    return VerticalAlign::START;
+    return VerticalAlign::CENTER;
 }
 
 // 计算两个相邻子项之间的间距（按布局方向）
@@ -86,13 +86,13 @@ void SmartLayoutAlgorithm::AddCrossAxisAlignmentConstraints(
                 parent->position_.offsetX.expr + parent->size_.width.expr);
         }
     } else {
-        if (verticalAlign_ == VerticalAlign::START) {
+        if (verticalAlign_ == VerticalAlign::TOP) {
             solver.add(child->position_.offsetY.expr == parent->position_.offsetY.expr);
         } else if (verticalAlign_ == VerticalAlign::CENTER) {
             solver.add(child->position_.offsetY.expr - parent->position_.offsetY.expr ==
                 parent->position_.offsetY.expr + parent->size_.height.expr -
                 child->position_.offsetY.expr - child->size_.height.expr);
-        } else if (verticalAlign_ == VerticalAlign::END) {
+        } else if (verticalAlign_ == VerticalAlign::BOTTOM) {
             solver.add(child->position_.offsetY.expr + child->size_.height.expr ==
                 parent->position_.offsetY.expr + parent->size_.height.expr);
         }
@@ -321,7 +321,7 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     auto layoutProperty = AceType::DynamicCast<FlexLayoutProperty>(layoutWrapper->GetLayoutProperty());
     CHECK_NULL_VOID(layoutProperty);
     mainAxisAlign_ = layoutProperty->GetMainAxisAlignValue(FlexAlign::FLEX_START);
-    auto crossAxisAlign = layoutProperty->GetCrossAxisAlignValue(FlexAlign::FLEX_START);
+    auto crossAxisAlign = layoutProperty->GetCrossAxisAlignValue(FlexAlign::CENTER);
     if (layoutType == LayoutType::COLUMN) {
         horizontalAlign_ = ToHorizontalAlign(crossAxisAlign);
     } else {
@@ -335,9 +335,9 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     auto parentOffset = layoutWrapper->GetGeometryNode()->GetFrameOffset();
 
     // Step 2: 轻量短路优化
-    // 仅在 start/start 场景且空间充足时跳过求解，减少求解器开销。
+    // 仅在主轴 start 且交叉轴起始对齐（Column=START / Row=TOP）并且空间充足时跳过求解，减少求解器开销。
     bool isCrossStart = (layoutType == LayoutType::COLUMN) ? (horizontalAlign_ == HorizontalAlign::START)
-                                                            : (verticalAlign_ == VerticalAlign::START);
+                                                            : (verticalAlign_ == VerticalAlign::TOP);
     if (mainAxisAlign_ == FlexAlign::FLEX_START && isCrossStart) {
         if ((layoutType == LayoutType::COLUMN && IsColumnSpaceEnough(layoutWrapper)) ||
             (layoutType == LayoutType::ROW && IsRowSpaceEnough(layoutWrapper))) {
