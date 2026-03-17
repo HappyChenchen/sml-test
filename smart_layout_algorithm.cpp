@@ -319,9 +319,19 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
                 auto childOffset = child->GetGeometryNode()->GetFrameOffset();
                 auto childSize = child->GetGeometryNode()->GetFrameSize();
                 auto childId = child->GetHostNode() ? child->GetHostNode()->GetId() : -1;
+                float parentMainSize =
+                    (layoutType == LayoutType::COLUMN) ? layoutWrapper->GetGeometryNode()->GetFrameSize().Height()
+                                                       : layoutWrapper->GetGeometryNode()->GetFrameSize().Width();
+                float childMainOffset =
+                    (layoutType == LayoutType::COLUMN) ? childOffset.GetY() : childOffset.GetX();
+                float childMainSize =
+                    (layoutType == LayoutType::COLUMN) ? childSize.Height() : childSize.Width();
+                float tailGap = parentMainSize - (childMainOffset + childMainSize);
                 LOGE("smart_layout short_circuit_reset type:%{public}s child:%{public}d "
-                     "offset:[%{public}.2f %{public}.2f] size:[%{public}.2f %{public}.2f]",
-                    layoutTypeStr, childId, childOffset.GetX(), childOffset.GetY(), childSize.Width(), childSize.Height());
+                     "offset:[%{public}.2f %{public}.2f] size:[%{public}.2f %{public}.2f] "
+                     "parentMainSize:%{public}.2f tailGap:%{public}.2f",
+                    layoutTypeStr, childId, childOffset.GetX(), childOffset.GetY(), childSize.Width(), childSize.Height(),
+                    parentMainSize, tailGap);
             }
             return;
         }
@@ -442,10 +452,19 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         const auto& initialSize = initialSizes[index];
         const float deltaX = offsetX - initialOffset.GetX();
         const float deltaY = offsetY - initialOffset.GetY();
+        const float parentMainSize = (layoutType == LayoutType::COLUMN) ? parentSize.Height() : parentSize.Width();
+        const float initMainOffset = (layoutType == LayoutType::COLUMN) ? initialOffset.GetY() : initialOffset.GetX();
+        const float initMainSize = (layoutType == LayoutType::COLUMN) ? initialSize.Height() : initialSize.Width();
+        const float finalMainOffset = (layoutType == LayoutType::COLUMN) ? offsetY : offsetX;
+        const float finalMainSize = (layoutType == LayoutType::COLUMN) ? childrenLayoutNode[index]->size_.height.value
+                                                                        : childrenLayoutNode[index]->size_.width.value;
+        const float initTailGap = parentMainSize - (initMainOffset + initMainSize);
+        const float finalTailGap = parentMainSize - (finalMainOffset + finalMainSize);
         LOGE("smart_layout solve_result type:%{public}s child:%{public}d "
              "initOffset:[%{public}.2f %{public}.2f] modelOffset:[%{public}.2f %{public}.2f] "
              "finalOffset:[%{public}.2f %{public}.2f] delta:[%{public}.2f %{public}.2f] "
-             "initSize:[%{public}.2f %{public}.2f] finalSize:[%{public}.2f %{public}.2f] sizeScale:%{public}.4f",
+             "initSize:[%{public}.2f %{public}.2f] finalSize:[%{public}.2f %{public}.2f] "
+             "parentMainSize:%{public}.2f initTailGap:%{public}.2f finalTailGap:%{public}.2f sizeScale:%{public}.4f",
             layoutTypeStr,
             childId,
             initialOffset.GetX(),
@@ -460,6 +479,9 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
             initialSize.Height(),
             childrenLayoutNode[index]->size_.width.value,
             childrenLayoutNode[index]->size_.height.value,
+            parentMainSize,
+            initTailGap,
+            finalTailGap,
             root->scaleInfo_.sizeScale.value);
 
         child->GetGeometryNode()->SetFrameOffset(OffsetF(offsetX, offsetY));

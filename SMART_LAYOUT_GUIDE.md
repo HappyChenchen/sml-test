@@ -164,6 +164,7 @@
 7. 调试日志：
 - 在短路分支与求解回写分支输出子项位置日志，便于按元素 id 排查偏移问题
 - 求解回写日志包含 `initOffset/finalOffset/delta/initSize/finalSize`
+- 主轴排查字段：`parentMainSize/initTailGap/finalTailGap`
 
 ## 9. 一个简短例子（SPACE_EVENLY）
 
