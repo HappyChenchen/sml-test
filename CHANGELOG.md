@@ -106,3 +106,17 @@
 - [SMART_LAYOUT_GUIDE.md](/d:/0_Work/sml-test/SMART_LAYOUT_GUIDE.md)
 - [CHANGELOG.md](/d:/0_Work/sml-test/CHANGELOG.md)
 - [gitlog.md](/d:/0_Work/sml-test/gitlog.md)
+
+## 2026-03-17（本次追加：日志改为最简字段）
+### 修改
+- `solve_result` 日志改为单条精简输出 `smart_layout compact`，仅保留：
+  - 父容器 `parentXYWH`
+  - 子容器相对父容器 `childRelXY` 与自身 `childWH`
+  - `spaceScale`、`sizeScale`
+- 移除旧的多条细分日志与不再使用的中间计算，降低日志噪音。
+
+### 影响文件
+- [smart_layout_algorithm.cpp](/d:/0_Work/sml-test/smart_layout_algorithm.cpp)
+- [SMART_LAYOUT_GUIDE.md](/d:/0_Work/sml-test/SMART_LAYOUT_GUIDE.md)
+- [CHANGELOG.md](/d:/0_Work/sml-test/CHANGELOG.md)
+- [gitlog.md](/d:/0_Work/sml-test/gitlog.md)

@@ -164,19 +164,10 @@
 
 7. 调试日志：
 - 在短路分支与求解回写分支输出子项位置日志，便于按元素 id 排查偏移问题
-- 求解回写日志包含 `initOffset/finalOffset/delta/initSize/finalSize`
-- 主轴排查字段：`parentMainSize/initTailGap/finalTailGap`
-- 新增子项结构化字段：
-  - `finalXYWH`：子项最终 `x/y/width/height`
-  - `spaceFromPrevBottom`：相对前一个子项底部（Row 时为相对前一个右侧）的主轴间距
-  - `firstTopSpaceY`：首个子项相对父容器顶部的 `y`
-  - `sizeScale/spaceScale` 与 `scaleDelta`
-  - `initSize/finalSize/sizeDelta/childScaleXY`（对比初始宽高与缩放变化）
-  - 为避免单条日志参数过多并减少重复参数，已拆为四条并抽公共上下文：
-    - `solve_result_common`（`type/child/prevChild/isFirst`）
-    - `solve_result_geom`
-    - `solve_result_scale`
-    - `solve_result_offset`
+- 求解回写日志统一为一条精简格式 `smart_layout compact`，字段仅包含：
+  - 父容器：`parentXYWH`
+  - 子容器：`childRelXY`（相对父容器）和 `childWH`
+  - 缩放：`spaceScale`、`sizeScale`
 
 8. 放大回涨稳定性修复：
 - 在进入求解前，先把所有子项 `transformScale` 复位为 `1.0` 并重新布局

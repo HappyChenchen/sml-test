@@ -118,3 +118,15 @@
 变更说明：
 - 新增公共上下文 `logCtx`，统一承载 `type/child/prevChild/isFirst`。
 - 日志拆分为 `solve_result_common/solve_result_geom/solve_result_scale/solve_result_offset`，减少重复参数并提升可读性。
+
+## 13) 工作区未提交 | 2026-03-17 | 本地修改 | 日志格式精简为父子几何与双缩放
+影响文件：
+- `smart_layout_algorithm.cpp`
+- `SMART_LAYOUT_GUIDE.md`
+- `CHANGELOG.md`
+- `gitlog.md`
+
+变更说明：
+- 求解日志统一为 `smart_layout compact` 单条输出。
+- 字段仅包含 `parentXYWH`、`childRelXY`、`childWH`、`spaceScale`、`sizeScale`。
+- 删除旧的多条分段日志与冗余中间变量。

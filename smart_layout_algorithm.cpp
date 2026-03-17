@@ -353,10 +353,6 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     root->setFixedSizeConstraint(solver, parentSize.Width(), parentSize.Height());
 
     std::vector<std::shared_ptr<SmartLayoutNode>> childrenLayoutNode;
-    std::vector<OffsetF> initialOffsets;
-    std::vector<SizeF> initialSizes;
-    initialOffsets.reserve(children.size());
-    initialSizes.reserve(children.size());
 
     // Step 4: 从真实节点抽取初始几何数据，构造 SmartLayoutNode
     for (const auto& child : children) {
@@ -378,8 +374,6 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
 
         auto childOffset = child->GetGeometryNode()->GetFrameOffset();
         auto childSize = child->GetGeometryNode()->GetFrameSize();
-        initialOffsets.push_back(childOffset);
-        initialSizes.push_back(childSize);
 
         // 记录首元素相对父容器的初始留白
         if (isFirst) {
@@ -445,11 +439,6 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     root->syncData(m);
 
     uint32_t index = 0;
-    float prevFinalX = 0.0f;
-    float prevFinalY = 0.0f;
-    float prevFinalW = 0.0f;
-    float prevFinalH = 0.0f;
-    int prevChildId = -1;
     for (const auto& child : children) {
         childrenLayoutNode[index]->syncData(m);
 
@@ -466,85 +455,28 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         }
 
         auto childId = child->GetHostNode() ? child->GetHostNode()->GetId() : -1;
-        const auto& initialOffset = initialOffsets[index];
-        const auto& initialSize = initialSizes[index];
-        const float deltaX = offsetX - initialOffset.GetX();
-        const float deltaY = offsetY - initialOffset.GetY();
         const float finalWidth = childrenLayoutNode[index]->size_.width.value;
         const float finalHeight = childrenLayoutNode[index]->size_.height.value;
-        const float widthDelta = finalWidth - initialSize.Width();
-        const float heightDelta = finalHeight - initialSize.Height();
-        const float childScaleX = (initialSize.Width() > 0.0f) ? (finalWidth / initialSize.Width()) : 1.0f;
-        const float childScaleY = (initialSize.Height() > 0.0f) ? (finalHeight / initialSize.Height()) : 1.0f;
+        const float childRelativeX = offsetX - parentOffset.GetX();
+        const float childRelativeY = offsetY - parentOffset.GetY();
         const float sizeScale = root->scaleInfo_.sizeScale.value;
         const float spaceScale = root->scaleInfo_.spaceScale.value;
-        const float sizeScaleDelta = sizeScale - 1.0f;
-        const float spaceScaleDelta = spaceScale - 1.0f;
-        const float parentMainSize = (layoutType == LayoutType::COLUMN) ? parentSize.Height() : parentSize.Width();
-        const float initMainOffset = (layoutType == LayoutType::COLUMN) ? (initialOffset.GetY() - parentOffset.GetY())
-                                                                         : (initialOffset.GetX() - parentOffset.GetX());
-        const float initMainSize = (layoutType == LayoutType::COLUMN) ? initialSize.Height() : initialSize.Width();
-        const float finalMainOffset = (layoutType == LayoutType::COLUMN) ? (offsetY - parentOffset.GetY())
-                                                                          : (offsetX - parentOffset.GetX());
-        const float finalMainSize = (layoutType == LayoutType::COLUMN) ? finalHeight : finalWidth;
-        const float initTailGap = parentMainSize - (initMainOffset + initMainSize);
-        const float finalTailGap = parentMainSize - (finalMainOffset + finalMainSize);
-        const bool isFirstChild = (index == 0);
-        const float spaceFromPrevBottom = isFirstChild
-            ? (offsetY - parentOffset.GetY())
-            : ((layoutType == LayoutType::COLUMN)
-                      ? (offsetY - (prevFinalY + prevFinalH))
-                      : (offsetX - (prevFinalX + prevFinalW)));
-        const float firstTopSpaceY = isFirstChild ? (offsetY - parentOffset.GetY()) : -1.0f;
-        std::string logCtx = "type:" + std::string(layoutTypeStr) +
-            " child:" + std::to_string(childId) +
-            " prevChild:" + std::to_string(prevChildId) +
-            " isFirst:" + std::to_string(isFirstChild ? 1 : 0);
-
-        LOGE("smart_layout solve_result_common %{public}s", logCtx.c_str());
-        LOGE("smart_layout solve_result_geom %{public}s "
-             "finalXYWH:[%{public}.2f %{public}.2f %{public}.2f %{public}.2f] "
-             "spaceFromPrevBottom:%{public}.2f firstTopSpaceY:%{public}.2f",
-            logCtx.c_str(),
-            offsetX,
-            offsetY,
+        LOGE("smart_layout compact type:%{public}s child:%{public}d "
+             "parentXYWH:[%{public}.2f %{public}.2f %{public}.2f %{public}.2f] "
+             "childRelXY:[%{public}.2f %{public}.2f] childWH:[%{public}.2f %{public}.2f] "
+             "spaceScale:%{public}.4f sizeScale:%{public}.4f",
+            layoutTypeStr,
+            childId,
+            parentOffset.GetX(),
+            parentOffset.GetY(),
+            parentSize.Width(),
+            parentSize.Height(),
+            childRelativeX,
+            childRelativeY,
             finalWidth,
             finalHeight,
-            spaceFromPrevBottom,
-            firstTopSpaceY);
-        LOGE("smart_layout solve_result_scale %{public}s "
-             "initSize:[%{public}.2f %{public}.2f] finalSize:[%{public}.2f %{public}.2f] sizeDelta:[%{public}.2f %{public}.2f] "
-             "childScaleXY:[%{public}.4f %{public}.4f] sizeScale:%{public}.4f spaceScale:%{public}.4f "
-             "scaleDelta:[%{public}.4f %{public}.4f]",
-            logCtx.c_str(),
-            initialSize.Width(),
-            initialSize.Height(),
-            finalWidth,
-            finalHeight,
-            widthDelta,
-            heightDelta,
-            childScaleX,
-            childScaleY,
-            sizeScale,
             spaceScale,
-            sizeScaleDelta,
-            spaceScaleDelta);
-        LOGE("smart_layout solve_result_offset %{public}s "
-             "initOffset:[%{public}.2f %{public}.2f] modelOffset:[%{public}.2f %{public}.2f] "
-             "finalOffset:[%{public}.2f %{public}.2f] delta:[%{public}.2f %{public}.2f] "
-             "parentMainSize:%{public}.2f initTailGap:%{public}.2f finalTailGap:%{public}.2f",
-            logCtx.c_str(),
-            initialOffset.GetX(),
-            initialOffset.GetY(),
-            childrenLayoutNode[index]->position_.offsetX.value,
-            childrenLayoutNode[index]->position_.offsetY.value,
-            offsetX,
-            offsetY,
-            deltaX,
-            deltaY,
-            parentMainSize,
-            initTailGap,
-            finalTailGap);
+            sizeScale);
 
         child->GetGeometryNode()->SetFrameOffset(OffsetF(offsetX, offsetY));
 
@@ -554,11 +486,6 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         }
         child->Layout();
 
-        prevFinalX = offsetX;
-        prevFinalY = offsetY;
-        prevFinalW = finalWidth;
-        prevFinalH = finalHeight;
-        prevChildId = childId;
         index++;
     }
 }
