@@ -6,7 +6,6 @@ namespace HHHH::HHH::HH {
 
 namespace {
 
-// 工具函数：把 float 常量转换成 Z3 实数表达式
 z3::expr Float2Expr(z3::optimize& solver, float value)
 {
     return solver.ctx().real_val(std::to_string(value).c_str());
@@ -87,7 +86,6 @@ const char* VerticalAlignToString(VerticalAlign align)
     return "UNKNOWN";
 }
 
-// 计算两个相邻子项之间的间距（按布局方向）
 float CalculateSpaceBetween(const RefPtr<LayoutWrapper>& child1, const RefPtr<LayoutWrapper>& child2, LayoutType layoutType)
 {
     auto offset1 = child1->GetGeometryNode()->GetFrameOffset();
@@ -105,7 +103,6 @@ float CalculateSpaceBetween(const RefPtr<LayoutWrapper>& child1, const RefPtr<La
 void SmartLayoutAlgorithm::AddDefaultConstraints(
     z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent, std::shared_ptr<SmartLayoutNode> child)
 {
-    // 1) 几何值必须非负
     solver.add(child->size_.width.expr >= 0);
     solver.add(child->size_.height.expr >= 0);
     solver.add(child->position_.offsetX.expr >= 0);
@@ -113,7 +110,6 @@ void SmartLayoutAlgorithm::AddDefaultConstraints(
     solver.add(parent->position_.offsetX.expr >= 0);
     solver.add(parent->position_.offsetY.expr >= 0);
 
-    // 2) 子组件必须落在父组件矩形内
     solver.add(child->position_.offsetX.expr >= parent->position_.offsetX.expr);
     solver.add(child->position_.offsetY.expr >= parent->position_.offsetY.expr);
     solver.add(child->position_.offsetX.expr + child->size_.width.expr <=
@@ -128,7 +124,6 @@ void SmartLayoutAlgorithm::AddCrossAxisAlignmentConstraints(
     std::shared_ptr<SmartLayoutNode> child,
     LayoutType layoutType)
 {
-    // Column 的侧轴对齐使用 HorizontalAlign；Row 的侧轴对齐使用 VerticalAlign。
     if (layoutType == LayoutType::COLUMN) {
         if (horizontalAlign_ == HorizontalAlign::START) {
             solver.add(child->position_.offsetX.expr == parent->position_.offsetX.expr);
@@ -168,7 +163,6 @@ void SmartLayoutAlgorithm::AddMainAxisAlignmentConstraints(
     const auto& first = parent->childNode.front();
     const auto& last = parent->childNode.back();
 
-    // startPos/endPos 分别代表内容块在主轴方向的起点/终点。
     z3::expr startPos = (layoutType == LayoutType::COLUMN) ? first->position_.offsetY.expr : first->position_.offsetX.expr;
     z3::expr endPos = (layoutType == LayoutType::COLUMN)
         ? (last->position_.offsetY.expr + last->size_.height.expr)
@@ -179,7 +173,7 @@ void SmartLayoutAlgorithm::AddMainAxisAlignmentConstraints(
         ? (parent->position_.offsetY.expr + parent->size_.height.expr)
         : (parent->position_.offsetX.expr + parent->size_.width.expr);
 
-    // 内容块整体必须落在父容器主轴范围内。
+    // Keep content block inside parent range on main axis.
     solver.add(startPos >= parentStart);
     solver.add(endPos <= parentEnd);
 
@@ -188,37 +182,34 @@ void SmartLayoutAlgorithm::AddMainAxisAlignmentConstraints(
     z3::expr scaledHeadGap = Float2Expr(solver, headBase) * parent->scaleInfo_.spaceScale.expr;
     z3::expr scaledTailGap = Float2Expr(solver, tailBase) * parent->scaleInfo_.spaceScale.expr;
 
-    // mainAxisOffset 的作用：在保持相对顺序不变的前提下整体平移。
+    // mainAxisOffset controls block shift along main axis.
     if (mainAxisAlign_ == FlexAlign::FLEX_START) {
         solver.add(startPos - parentStart == scaledHeadGap);
-        solver.add(parentEnd - endPos == scaledTailGap);
+        // Keep start aligned while allowing extra slack to stay at tail side.
+        solver.add(parentEnd - endPos >= scaledTailGap);
         solver.add(mainAxisOffset == 0);
         solver.add(betweenGap == 0);
     } else if (mainAxisAlign_ == FlexAlign::CENTER) {
-        // 头部留白 == 尾部留白
         solver.add(startPos - parentStart == scaledHeadGap + mainAxisOffset);
         solver.add(parentEnd - endPos == scaledTailGap + mainAxisOffset);
         solver.add(betweenGap == 0);
     } else if (mainAxisAlign_ == FlexAlign::FLEX_END) {
-        // 内容尾部留白按 tailBase * spaceScale 同比缩放
+        // Keep tail-side gap scaled by tailBase * spaceScale.
         solver.add(startPos - parentStart == scaledHeadGap + mainAxisOffset);
         solver.add(parentEnd - endPos == scaledTailGap);
         solver.add(betweenGap == 0);
     } else if (mainAxisAlign_ == FlexAlign::SPACE_BETWEEN) {
-        // 首尾贴边，内部间隔相等（通过 betweenGap 统一控制）
         solver.add(startPos == parentStart);
         solver.add(endPos == parentEnd);
     } else if (mainAxisAlign_ == FlexAlign::SPACE_AROUND) {
-        // 两端留白 = 内部间隔的一半
         auto halfGap = betweenGap / solver.ctx().real_val("2");
         solver.add(startPos - parentStart == halfGap);
         solver.add(parentEnd - endPos == halfGap);
     } else if (mainAxisAlign_ == FlexAlign::SPACE_EVENLY) {
-        // 两端留白 = 内部间隔
         solver.add(startPos - parentStart == betweenGap);
         solver.add(parentEnd - endPos == betweenGap);
     } else {
-        // 其他对齐类型暂时回退到 FLEX_START，避免行为不可控。
+        // Fallback to FLEX_START for unsupported align types.
         solver.add(mainAxisOffset == 0);
         solver.add(betweenGap == 0);
     }
@@ -226,33 +217,36 @@ void SmartLayoutAlgorithm::AddMainAxisAlignmentConstraints(
 
 void SmartLayoutAlgorithm::addColumnLayout(z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent)
 {
-    // sizeScale：组件尺寸缩放系数，目标是尽可能大（尽量少缩小）
-    solver.add(parent->scaleInfo_.sizeScale.expr > 0);
+    // Keep sizeScale in [0,1].
+    solver.add(parent->scaleInfo_.sizeScale.expr >= 0);
     solver.add(parent->scaleInfo_.sizeScale.expr <= 1);
-    // sizeScale 目标在 spaceScale 之后添加
+    // Objective prefers larger sizeScale first.
 
-    // spaceScale：间距缩放系数
+    // Keep spaceScale in [0,1].
     solver.add(parent->scaleInfo_.spaceScale.expr >= 0);
     solver.add(parent->scaleInfo_.spaceScale.expr <= 1);
-    solver.add(z3::implies(
-        parent->scaleInfo_.sizeScale.expr < solver.ctx().real_val("1"),
-        parent->scaleInfo_.spaceScale.expr == solver.ctx().real_val("0")));
-    // 一级目标：在满足约束前提下尽量保留原始间距比例
+    const bool isMainAxisLinearAlign = (mainAxisAlign_ == FlexAlign::FLEX_START ||
+        mainAxisAlign_ == FlexAlign::CENTER ||
+        mainAxisAlign_ == FlexAlign::FLEX_END);
+    if (isMainAxisLinearAlign) {
+        // Linear main-axis align: shrink spacing to zero before shrinking size.
+        solver.add(z3::implies(
+            parent->scaleInfo_.sizeScale.expr < solver.ctx().real_val("1"),
+            parent->scaleInfo_.spaceScale.expr == solver.ctx().real_val("0")));
+    }
     solver.maximize(parent->scaleInfo_.sizeScale.expr);
     solver.maximize(parent->scaleInfo_.spaceScale.expr);
 
-    // 主轴平移量：用于支持 mainAxisAlign_ 的 center/end。
     z3::expr mainAxisOffset =
         solver.ctx().real_const((parent->name_ + ".columnMainAxisOffset").c_str());
     solver.add(mainAxisOffset >= 0);
     z3::expr betweenGap =
         solver.ctx().real_const((parent->name_ + ".columnBetweenGap").c_str());
     solver.add(betweenGap >= 0);
-
     for (size_t i = 0; i < parent->childNode.size(); ++i) {
         const auto& child = parent->childNode[i];
 
-        // 尺寸统一按 sizeScale 缩放
+        // Scale child size by sizeScale.
         solver.add(child->size_.width.expr == Float2Expr(solver, child->size_.width.value) * parent->scaleInfo_.sizeScale.expr);
         solver.add(child->size_.height.expr == Float2Expr(solver, child->size_.height.value) * parent->scaleInfo_.sizeScale.expr);
 
@@ -263,8 +257,7 @@ void SmartLayoutAlgorithm::addColumnLayout(z3::optimize& solver, std::shared_ptr
             mainAxisAlign_ == FlexAlign::SPACE_AROUND ||
             mainAxisAlign_ == FlexAlign::SPACE_EVENLY);
 
-        // 主轴（Y）顺序：第一个由“首间距 + 偏移”决定，其余接在前一个后面。
-        // SPACE_* 模式使用统一间隔 betweenGap，不沿用历史边距。
+        // SPACE_* uses uniform betweenGap on main axis.
         if (i == 0) {
             z3::expr leadingGap = isSpaceAlign ? solver.ctx().real_val("0")
                 : (Float2Expr(solver, child->edgesSpace_.top) * parent->scaleInfo_.spaceScale.expr);
@@ -287,18 +280,23 @@ void SmartLayoutAlgorithm::addColumnLayout(z3::optimize& solver, std::shared_ptr
 
 void SmartLayoutAlgorithm::addRowLayout(z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent)
 {
-    // 与 Column 一致：先保证尺寸缩放在 (0, 1] 并最大化。
-    solver.add(parent->scaleInfo_.sizeScale.expr > 0);
+    // Keep sizeScale in [0,1].
+    solver.add(parent->scaleInfo_.sizeScale.expr >= 0);
     solver.add(parent->scaleInfo_.sizeScale.expr <= 1);
-    // sizeScale 目标在 spaceScale 之后添加
+    // Objective prefers larger sizeScale first.
 
-    // 优化点：Row 也补齐 spaceScale 约束，避免模型出现异常间距。
+    // Keep spaceScale in [0,1].
     solver.add(parent->scaleInfo_.spaceScale.expr >= 0);
     solver.add(parent->scaleInfo_.spaceScale.expr <= 1);
-    solver.add(z3::implies(
-        parent->scaleInfo_.sizeScale.expr < solver.ctx().real_val("1"),
-        parent->scaleInfo_.spaceScale.expr == solver.ctx().real_val("0")));
-    // 一级目标：在满足约束前提下尽量保留原始间距比例
+    const bool isMainAxisLinearAlign = (mainAxisAlign_ == FlexAlign::FLEX_START ||
+        mainAxisAlign_ == FlexAlign::CENTER ||
+        mainAxisAlign_ == FlexAlign::FLEX_END);
+    if (isMainAxisLinearAlign) {
+        // Linear main-axis align: shrink spacing to zero before shrinking size.
+        solver.add(z3::implies(
+            parent->scaleInfo_.sizeScale.expr < solver.ctx().real_val("1"),
+            parent->scaleInfo_.spaceScale.expr == solver.ctx().real_val("0")));
+    }
     solver.maximize(parent->scaleInfo_.sizeScale.expr);
     solver.maximize(parent->scaleInfo_.spaceScale.expr);
 
@@ -322,7 +320,7 @@ void SmartLayoutAlgorithm::addRowLayout(z3::optimize& solver, std::shared_ptr<Sm
             mainAxisAlign_ == FlexAlign::SPACE_AROUND ||
             mainAxisAlign_ == FlexAlign::SPACE_EVENLY);
 
-        // 主轴（X）顺序：SPACE_* 模式使用统一间隔 betweenGap。
+        // SPACE_* uses uniform betweenGap on main axis.
         if (i == 0) {
             z3::expr leadingGap = isSpaceAlign ? solver.ctx().real_val("0")
                 : (Float2Expr(solver, child->edgesSpace_.left) * parent->scaleInfo_.spaceScale.expr);
@@ -417,7 +415,7 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     const char* layoutTypeStr = (layoutType == LayoutType::COLUMN) ? "COLUMN" : "ROW";
     LOGI("smart_layout trigger_enter type:%{public}s wrapper:%{public}p", layoutTypeStr, layoutWrapper);
 
-    // Step 1: 拉取 Flex 配置（主轴/交叉轴对齐）
+    // Step 1
     auto layoutProperty = AceType::DynamicCast<FlexLayoutProperty>(layoutWrapper->GetLayoutProperty());
     if (!layoutProperty) {
         LOGI("smart_layout trigger_skip type:%{public}s reason:no_layout_property", layoutTypeStr);
@@ -467,8 +465,7 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         child->Layout();
     }
 
-    // Step 2: 轻量短路优化
-    // 仅在主轴 start 且交叉轴起始对齐（Column=START / Row=TOP）并且空间充足时跳过求解，减少求解器开销。
+    // Step 2
     bool isCrossStart = (layoutType == LayoutType::COLUMN) ? (horizontalAlign_ == HorizontalAlign::START)
                                                             : (verticalAlign_ == VerticalAlign::TOP);
     if (mainAxisAlign_ == FlexAlign::FLEX_START && isCrossStart) {
@@ -507,18 +504,17 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         LOGI("smart_layout trigger_continue type:%{public}s reason:need_solver_for_align", layoutTypeStr);
     }
 
-    // Step 3: 创建求解器上下文
+    // Step 3
     LOGI("smart_layout solver_start type:%{public}s", layoutTypeStr);
     z3::context ctx;
     z3::optimize solver(ctx);
 
-    // 根节点用于承载父容器尺寸与缩放变量
     auto root = std::make_shared<SmartLayoutNode>(ctx, "root");
     root->setFixedSizeConstraint(solver, parentSize.Width(), parentSize.Height());
 
     std::vector<std::shared_ptr<SmartLayoutNode>> childrenLayoutNode;
 
-    // Step 4: 从真实节点抽取初始几何数据，构造 SmartLayoutNode
+    // Step 4
     for (auto it = children.begin(); it != children.end(); ++it) {
         const auto& child = *it;
         const std::string childName = "child_" + std::to_string(child->GetHostNode()->GetId());
@@ -531,13 +527,11 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         auto childOffset = child->GetGeometryNode()->GetFrameOffset();
         auto childSize = child->GetGeometryNode()->GetFrameSize();
 
-        // 记录首元素相对父容器的初始留白
         if (isFirst) {
             item->edgesSpace_.top = childOffset.GetY() - parentOffset.GetY();
             item->edgesSpace_.left = childOffset.GetX() - parentOffset.GetX();
         }
 
-        // 记录与下一个元素的间距（纵向/横向都记录，后续按布局方向复用）
         if (!isLast) {
             const auto& nextChild = *nextIt;
             item->edgesSpace_.bottom = CalculateSpaceBetween(child, nextChild, LayoutType::COLUMN);
@@ -549,7 +543,6 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
             }
         }
 
-        // 记录最后一个元素到父容器尾部的间距
         if (isLast) {
             item->edgesSpace_.bottom =
                 parentSize.Height() - (childOffset.GetY() - parentOffset.GetY()) - childSize.Height();
@@ -560,7 +553,6 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         item->size_.width.value = childSize.Width();
         item->size_.height.value = childSize.Height();
 
-        // Blank 视作“弹性空白”：把它转成间距，实体尺寸置 0
         if (child->GetHostTag() == "Blank") {
             if (layoutType == LayoutType::COLUMN) {
                 item->edgesSpace_.bottom += item->size_.height.value;
@@ -576,21 +568,21 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
 
     root->setChildren(childrenLayoutNode);
 
-    // Step 5: 按方向添加约束
+    // Step 5
     if (layoutType == LayoutType::COLUMN) {
         addColumnLayout(solver, root);
     } else {
         addRowLayout(solver, root);
     }
 
-    // Step 6: 求解
+    // Step 6
     auto result = solver.check();
     if (result != z3::sat) {
         LOGE("cr_debug unsat!!!");
         return;
     }
 
-    // Step 7: 回写模型结果到真实节点
+    // Step 7
     z3::model m = solver.get_model();
     root->syncData(m);
 
@@ -601,7 +593,6 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         float offsetX = childrenLayoutNode[index]->position_.offsetX.value;
         float offsetY = childrenLayoutNode[index]->position_.offsetY.value;
 
-        // 与原逻辑保持一致：按方向附加 margin
         if (child->GetGeometryNode()->GetMargin()) {
             if (layoutType == LayoutType::COLUMN) {
                 offsetX += child->GetGeometryNode()->GetMargin()->left.value_or(0);

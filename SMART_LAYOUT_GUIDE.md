@@ -37,7 +37,7 @@
 - `h_i = h_i0 * sizeScale`
 
 边界：
-- `0 < sizeScale <= 1`
+- `0 <= sizeScale <= 1`
 - `0 <= spaceScale <= 1`
 - `betweenGap >= 0`
 - `mainAxisOffset >= 0`
@@ -96,10 +96,17 @@
 - `startPos` = 内容块起点（首子项主轴起点）
 - `endPos` = 内容块终点（尾子项主轴终点）
 - `parentStart` / `parentEnd` = 父容器主轴起终点
+- `headBase` = 初始首部间距（未缩放）
+  - `Column`：第一个子项到父容器顶部的间距（`first.edgesSpace.top`）
+  - `Row`：第一个子项到父容器左侧的间距（`first.edgesSpace.left`）
+- `tailBase` = 初始尾部间距（未缩放）
+  - `Column`：最后一个子项到父容器底部的间距（`last.edgesSpace.bottom`）
+  - `Row`：最后一个子项到父容器右侧的间距（`last.edgesSpace.right`）
+- `headBase * spaceScale` / `tailBase * spaceScale` = 首尾间距按统一比例缩小后的值（`spaceScale ∈ [0,1]`）
 
 ### `FLEX_START`
 - `startPos - parentStart = headBase * spaceScale`
-- `parentEnd - endPos = tailBase * spaceScale`
+- `parentEnd - endPos >= tailBase * spaceScale`
 - `mainAxisOffset = 0`
 - `betweenGap = 0`
 
@@ -136,7 +143,7 @@
 - 在满足所有约束时，优先保持子项尺寸（先不缩宽高）；
 - 在 `sizeScale` 最优前提下，再尽量保留间距比例；
 - 等价执行顺序：先压缩 `spaceScale`，仅当 `spaceScale` 到极限仍不可行时再压缩 `sizeScale`；
-- 约束补充：`sizeScale < 1 => spaceScale = 0`（保证“间距先归零，再缩尺寸”）；
+- 约束补充（仅 `FLEX_START/CENTER/FLEX_END`）：`sizeScale < 1 => spaceScale = 0`（保证“间距先归零，再缩尺寸”）；
 - `betweenGap` 作为 `SPACE_*` 模式下的可行性调节量。
 
 ## 7. 代码对应关系
