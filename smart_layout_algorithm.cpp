@@ -14,7 +14,9 @@ z3::expr Float2Expr(z3::optimize& solver, float value)
 
 HorizontalAlign ToHorizontalAlign(FlexAlign align)
 {
-    if (align == FlexAlign::CENTER) {
+    if (align == FlexAlign::FLEX_START) {
+        return HorizontalAlign::START;
+    } else if (align == FlexAlign::CENTER) {
         return HorizontalAlign::CENTER;
     } else if (align == FlexAlign::FLEX_END) {
         return HorizontalAlign::END;
@@ -24,7 +26,9 @@ HorizontalAlign ToHorizontalAlign(FlexAlign align)
 
 VerticalAlign ToVerticalAlign(FlexAlign align)
 {
-    if (align == FlexAlign::CENTER) {
+    if (align == FlexAlign::FLEX_START) {
+        return VerticalAlign::TOP;
+    } else if (align == FlexAlign::CENTER) {
         return VerticalAlign::CENTER;
     } else if (align == FlexAlign::FLEX_END) {
         return VerticalAlign::BOTTOM;
