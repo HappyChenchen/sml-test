@@ -179,6 +179,10 @@ void SmartLayoutAlgorithm::AddMainAxisAlignmentConstraints(
         ? (parent->position_.offsetY.expr + parent->size_.height.expr)
         : (parent->position_.offsetX.expr + parent->size_.width.expr);
 
+    // 内容块整体必须落在父容器主轴范围内。
+    solver.add(startPos >= parentStart);
+    solver.add(endPos <= parentEnd);
+
     float headBase = (layoutType == LayoutType::COLUMN) ? first->edgesSpace_.top : first->edgesSpace_.left;
     float tailBase = (layoutType == LayoutType::COLUMN) ? last->edgesSpace_.bottom : last->edgesSpace_.right;
     z3::expr scaledHeadGap = Float2Expr(solver, headBase) * parent->scaleInfo_.spaceScale.expr;
@@ -230,6 +234,9 @@ void SmartLayoutAlgorithm::addColumnLayout(z3::optimize& solver, std::shared_ptr
     // spaceScale：间距缩放系数
     solver.add(parent->scaleInfo_.spaceScale.expr >= 0);
     solver.add(parent->scaleInfo_.spaceScale.expr <= 1);
+    solver.add(z3::implies(
+        parent->scaleInfo_.sizeScale.expr < solver.ctx().real_val("1"),
+        parent->scaleInfo_.spaceScale.expr == solver.ctx().real_val("0")));
     // 一级目标：在满足约束前提下尽量保留原始间距比例
     solver.maximize(parent->scaleInfo_.sizeScale.expr);
     solver.maximize(parent->scaleInfo_.spaceScale.expr);
@@ -288,6 +295,9 @@ void SmartLayoutAlgorithm::addRowLayout(z3::optimize& solver, std::shared_ptr<Sm
     // 优化点：Row 也补齐 spaceScale 约束，避免模型出现异常间距。
     solver.add(parent->scaleInfo_.spaceScale.expr >= 0);
     solver.add(parent->scaleInfo_.spaceScale.expr <= 1);
+    solver.add(z3::implies(
+        parent->scaleInfo_.sizeScale.expr < solver.ctx().real_val("1"),
+        parent->scaleInfo_.spaceScale.expr == solver.ctx().real_val("0")));
     // 一级目标：在满足约束前提下尽量保留原始间距比例
     solver.maximize(parent->scaleInfo_.sizeScale.expr);
     solver.maximize(parent->scaleInfo_.spaceScale.expr);
@@ -344,34 +354,62 @@ SizeF SmartLayoutAlgorithm::ItermScale(const RefPtr<LayoutWrapper>& iterm, float
 
 bool SmartLayoutAlgorithm::IsColumnSpaceEnough(LayoutWrapper* layoutWrapper)
 {
-    uint32_t sumOfAllChildHeight = 0;
     const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
     if (children.empty()) {
         return true;
     }
 
+    const float parentStart = layoutWrapper->GetGeometryNode()->GetFrameOffset().GetY();
+    const float parentEnd = parentStart + layoutWrapper->GetGeometryNode()->GetFrameSize().Height();
+    float prevEnd = parentStart;
+    bool firstChild = true;
+
     for (const auto& child : children) {
+        auto childOffset = child->GetGeometryNode()->GetFrameOffset();
         auto childSize = child->GetGeometryNode()->GetFrameSize();
-        sumOfAllChildHeight += childSize.Height();
+        const float childStart = childOffset.GetY();
+        const float childEnd = childStart + childSize.Height();
+        if (childStart < parentStart || childEnd > parentEnd) {
+            return false;
+        }
+        if (!firstChild && childStart < prevEnd) {
+            return false;
+        }
+        prevEnd = childEnd;
+        firstChild = false;
     }
 
-    return sumOfAllChildHeight <= layoutWrapper->GetGeometryNode()->GetFrameSize().Height();
+    return true;
 }
 
 bool SmartLayoutAlgorithm::IsRowSpaceEnough(LayoutWrapper* layoutWrapper)
 {
-    uint32_t sumOfAllChildWidth = 0;
     const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
     if (children.empty()) {
         return true;
     }
 
+    const float parentStart = layoutWrapper->GetGeometryNode()->GetFrameOffset().GetX();
+    const float parentEnd = parentStart + layoutWrapper->GetGeometryNode()->GetFrameSize().Width();
+    float prevEnd = parentStart;
+    bool firstChild = true;
+
     for (const auto& child : children) {
+        auto childOffset = child->GetGeometryNode()->GetFrameOffset();
         auto childSize = child->GetGeometryNode()->GetFrameSize();
-        sumOfAllChildWidth += childSize.Width();
+        const float childStart = childOffset.GetX();
+        const float childEnd = childStart + childSize.Width();
+        if (childStart < parentStart || childEnd > parentEnd) {
+            return false;
+        }
+        if (!firstChild && childStart < prevEnd) {
+            return false;
+        }
+        prevEnd = childEnd;
+        firstChild = false;
     }
 
-    return sumOfAllChildWidth <= layoutWrapper->GetGeometryNode()->GetFrameSize().Width();
+    return true;
 }
 
 void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, LayoutType layoutType)
@@ -421,6 +459,13 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         static_cast<int>(crossAxisAlign));
     auto parentSize = layoutWrapper->GetGeometryNode()->GetFrameSize();
     auto parentOffset = layoutWrapper->GetGeometryNode()->GetFrameOffset();
+    for (const auto& child : children) {
+        ItermScale(child, 1.0f);
+        if (child->GetHostNode() != nullptr) {
+            child->GetHostNode()->MarkDirtyNode(NG::PROPERTY_UPDATE_LAYOUT);
+        }
+        child->Layout();
+    }
 
     // Step 2: 轻量短路优化
     // 仅在主轴 start 且交叉轴起始对齐（Column=START / Row=TOP）并且空间充足时跳过求解，减少求解器开销。
@@ -474,14 +519,6 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     std::vector<std::shared_ptr<SmartLayoutNode>> childrenLayoutNode;
 
     // Step 4: 从真实节点抽取初始几何数据，构造 SmartLayoutNode
-    for (const auto& child : children) {
-        ItermScale(child, 1.0f);
-        if (child->GetHostNode() != nullptr) {
-            child->GetHostNode()->MarkDirtyNode(NG::PROPERTY_UPDATE_LAYOUT);
-        }
-        child->Layout();
-    }
-
     for (auto it = children.begin(); it != children.end(); ++it) {
         const auto& child = *it;
         const std::string childName = "child_" + std::to_string(child->GetHostNode()->GetId());

@@ -133,9 +133,10 @@
 - `maximize(spaceScale)`（二级目标）
 
 含义：
-- 在满足所有约束时，优先保持子项尺寸尽量大；
+- 在满足所有约束时，优先保持子项尺寸（先不缩宽高）；
 - 在 `sizeScale` 最优前提下，再尽量保留间距比例；
 - 等价执行顺序：先压缩 `spaceScale`，仅当 `spaceScale` 到极限仍不可行时再压缩 `sizeScale`；
+- 约束补充：`sizeScale < 1 => spaceScale = 0`（保证“间距先归零，再缩尺寸”）；
 - `betweenGap` 作为 `SPACE_*` 模式下的可行性调节量。
 
 ## 7. 代码对应关系
