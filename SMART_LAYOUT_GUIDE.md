@@ -18,7 +18,9 @@
 - 布局方向：`COLUMN` 或 `ROW`
 - 对齐策略：
   - 主轴：`mainAxisAlign_`
-  - 交叉轴：`crossAxisAlign_`
+  - 交叉轴：
+    - `COLUMN` 使用 `horizontalAlign_`（`HorizontalAlign::START/CENTER/END`）
+    - `ROW` 使用 `verticalAlign_`（`VerticalAlign::START/CENTER/END`）
 
 ### 输出（求解结果）
 - 全局尺寸缩放：`sizeScale`
@@ -49,14 +51,14 @@
 ### 3.3 交叉轴对齐约束
 
 #### Column（交叉轴是 X）
-- `FLEX_START`：`x_i = x_parent`
-- `CENTER`：左右留白相等
-- `FLEX_END`：`x_i + w_i = x_parent + W_parent`
+- `HorizontalAlign::START`：`x_i = x_parent`
+- `HorizontalAlign::CENTER`：左右留白相等
+- `HorizontalAlign::END`：`x_i + w_i = x_parent + W_parent`
 
 #### Row（交叉轴是 Y）
-- `FLEX_START`：`y_i = y_parent`
-- `CENTER`：上下留白相等
-- `FLEX_END`：`y_i + h_i = y_parent + H_parent`
+- `VerticalAlign::START`：`y_i = y_parent`
+- `VerticalAlign::CENTER`：上下留白相等
+- `VerticalAlign::END`：`y_i + h_i = y_parent + H_parent`
 
 ## 4. 主轴公式（重点）
 
@@ -157,7 +159,9 @@
 - Row 使用 `left/right`
 
 5. 交叉轴默认回退值：
-- `crossAxisAlign_ = GetCrossAxisAlignValue(FlexAlign::FLEX_START)`
+- 从 `GetCrossAxisAlignValue(FlexAlign::FLEX_START)` 读取后：
+  - `COLUMN` 映射到 `horizontalAlign_`
+  - `ROW` 映射到 `verticalAlign_`
 
 6. 大量中文注释：
 - 约束、变量、阶段、回写流程都已补充

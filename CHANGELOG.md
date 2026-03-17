@@ -120,3 +120,18 @@
 - [SMART_LAYOUT_GUIDE.md](/d:/0_Work/sml-test/SMART_LAYOUT_GUIDE.md)
 - [CHANGELOG.md](/d:/0_Work/sml-test/CHANGELOG.md)
 - [gitlog.md](/d:/0_Work/sml-test/gitlog.md)
+
+## 2026-03-17（本次追加：侧轴对齐枚举重构 + 显式 else）
+### 修改
+- `AddCrossAxisAlignmentConstraints` 改为显式 `if (...) { ... } else { ... }` 结构，Row 逻辑不再依赖早返回的隐式分支。
+- 侧轴对齐改为方向专属枚举：
+  - `COLUMN`：`HorizontalAlign::START/CENTER/END`
+  - `ROW`：`VerticalAlign::START/CENTER/END`
+- 在 `PerformSmartLayout` 中将 `GetCrossAxisAlignValue(FlexAlign::FLEX_START)` 结果映射到对应枚举，并用于短路判定 `isCrossStart`。
+
+### 影响文件
+- [smart_layout_algorithm.h](/d:/0_Work/sml-test/smart_layout_algorithm.h)
+- [smart_layout_algorithm.cpp](/d:/0_Work/sml-test/smart_layout_algorithm.cpp)
+- [SMART_LAYOUT_GUIDE.md](/d:/0_Work/sml-test/SMART_LAYOUT_GUIDE.md)
+- [CHANGELOG.md](/d:/0_Work/sml-test/CHANGELOG.md)
+- [gitlog.md](/d:/0_Work/sml-test/gitlog.md)

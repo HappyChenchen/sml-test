@@ -130,3 +130,16 @@
 - 求解日志统一为 `smart_layout compact` 单条输出。
 - 字段仅包含 `parentXYWH`、`childRelXY`、`childWH`、`spaceScale`、`sizeScale`。
 - 删除旧的多条分段日志与冗余中间变量。
+
+## 14) 工作区未提交 | 2026-03-17 | 本地修改 | 交叉轴对齐改为 Horizontal/Vertical 并改显式 else
+影响文件：
+- `smart_layout_algorithm.h`
+- `smart_layout_algorithm.cpp`
+- `SMART_LAYOUT_GUIDE.md`
+- `CHANGELOG.md`
+- `gitlog.md`
+
+变更说明：
+- 新增 `HorizontalAlign`、`VerticalAlign` 枚举并替代原统一 `crossAxisAlign_` 成员。
+- `AddCrossAxisAlignmentConstraints` 改为显式 `if/else`：COLUMN 走 `HorizontalAlign`，ROW 走 `VerticalAlign`。
+- 从 `GetCrossAxisAlignValue(FlexAlign::FLEX_START)` 映射到对应侧轴枚举，并用于 `start/start` 短路判断。

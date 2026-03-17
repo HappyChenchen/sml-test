@@ -22,7 +22,8 @@ private:
 
     // 对齐配置（来自 FlexLayoutProperty）
     FlexAlign mainAxisAlign_ = FlexAlign::FLEX_START;
-    FlexAlign crossAxisAlign_ = FlexAlign::FLEX_START;
+    HorizontalAlign horizontalAlign_ = HorizontalAlign::START;
+    VerticalAlign verticalAlign_ = VerticalAlign::START;
 
     // 为不同方向添加约束
     void addColumnLayout(z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent);
