@@ -96,6 +96,7 @@
 - `parentStart` / `parentEnd` = 父容器主轴起终点
 
 ### `FLEX_START`
+- `startPos - parentStart = headBase * spaceScale`
 - `mainAxisOffset = 0`
 - `betweenGap = 0`
 
@@ -104,7 +105,7 @@
 - `betweenGap = 0`
 
 ### `FLEX_END`
-- `endPos = parentEnd`
+- `parentEnd - endPos = tailBase * spaceScale`
 - `betweenGap = 0`
 
 ### `SPACE_BETWEEN`
@@ -123,12 +124,12 @@
 ## 6. 优化目标
 
 当前目标函数：
-- `maximize(sizeScale)`
-- `maximize(spaceScale)`（二级目标）
+- `maximize(spaceScale)`（一级目标）
+- `maximize(sizeScale)`（二级目标）
 
 含义：
-- 在满足所有约束时，优先让子项尽量大；
-- 在 `sizeScale` 最优前提下，再尽量保留原始间距比例（避免间距被压到 0）。
+- 在满足所有约束时，优先保持间距按统一比例缩放；
+- 在 `spaceScale` 最优前提下，再尽量让子项尺寸更大；
 - `betweenGap` 作为 `SPACE_*` 模式下的可行性调节量。
 
 ## 7. 代码对应关系
@@ -165,6 +166,20 @@
 - 在短路分支与求解回写分支输出子项位置日志，便于按元素 id 排查偏移问题
 - 求解回写日志包含 `initOffset/finalOffset/delta/initSize/finalSize`
 - 主轴排查字段：`parentMainSize/initTailGap/finalTailGap`
+- 新增子项结构化字段：
+  - `finalXYWH`：子项最终 `x/y/width/height`
+  - `spaceFromPrevBottom`：相对前一个子项底部（Row 时为相对前一个右侧）的主轴间距
+  - `firstTopSpaceY`：首个子项相对父容器顶部的 `y`
+  - `sizeScale/spaceScale` 与 `scaleDelta`
+  - `initSize/finalSize/sizeDelta/childScaleXY`（对比初始宽高与缩放变化）
+
+8. 放大回涨稳定性修复：
+- 在进入求解前，先把所有子项 `transformScale` 复位为 `1.0` 并重新布局
+- 避免“上一次缩小后的尺寸”被当作下一次求解基准，导致父容器放大后子项仍不回涨
+
+9. 首尾间距改为父容器相对坐标：
+- `top/left` 不再直接用子项绝对偏移，而是 `childOffset - parentOffset`
+- `bottom/right` 也按父容器相对坐标计算，避免 `initTailGap` 在父组件位移后出现负值假象
 
 ## 9. 一个简短例子（SPACE_EVENLY）
 

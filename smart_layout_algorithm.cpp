@@ -108,6 +108,8 @@ void SmartLayoutAlgorithm::AddMainAxisAlignmentConstraints(
 
     // mainAxisOffset 的作用：在保持相对顺序不变的前提下整体平移。
     if (mainAxisAlign_ == FlexAlign::FLEX_START) {
+        float headBase = (layoutType == LayoutType::COLUMN) ? first->edgesSpace_.top : first->edgesSpace_.left;
+        solver.add(startPos - parentStart == Float2Expr(solver, headBase) * parent->scaleInfo_.spaceScale.expr);
         solver.add(mainAxisOffset == 0);
         solver.add(betweenGap == 0);
     } else if (mainAxisAlign_ == FlexAlign::CENTER) {
@@ -116,7 +118,8 @@ void SmartLayoutAlgorithm::AddMainAxisAlignmentConstraints(
         solver.add(betweenGap == 0);
     } else if (mainAxisAlign_ == FlexAlign::FLEX_END) {
         // 内容尾部贴紧父容器尾部
-        solver.add(endPos == parentEnd);
+        float tailBase = (layoutType == LayoutType::COLUMN) ? last->edgesSpace_.bottom : last->edgesSpace_.right;
+        solver.add(parentEnd - endPos == Float2Expr(solver, tailBase) * parent->scaleInfo_.spaceScale.expr);
         solver.add(betweenGap == 0);
     } else if (mainAxisAlign_ == FlexAlign::SPACE_BETWEEN) {
         // 首尾贴边，内部间隔相等（通过 betweenGap 统一控制）
@@ -143,13 +146,14 @@ void SmartLayoutAlgorithm::addColumnLayout(z3::optimize& solver, std::shared_ptr
     // sizeScale：组件尺寸缩放系数，目标是尽可能大（尽量少缩小）
     solver.add(parent->scaleInfo_.sizeScale.expr > 0);
     solver.add(parent->scaleInfo_.sizeScale.expr <= 1);
-    solver.maximize(parent->scaleInfo_.sizeScale.expr);
+    // sizeScale 目标在 spaceScale 之后添加
 
     // spaceScale：间距缩放系数
     solver.add(parent->scaleInfo_.spaceScale.expr >= 0);
     solver.add(parent->scaleInfo_.spaceScale.expr <= 1);
     // 二级目标：在 sizeScale 最优的前提下，尽量保留原始间距比例
     solver.maximize(parent->scaleInfo_.spaceScale.expr);
+    solver.maximize(parent->scaleInfo_.sizeScale.expr);
 
     // 主轴平移量：用于支持 mainAxisAlign_ 的 center/end。
     z3::expr mainAxisOffset =
@@ -200,13 +204,14 @@ void SmartLayoutAlgorithm::addRowLayout(z3::optimize& solver, std::shared_ptr<Sm
     // 与 Column 一致：先保证尺寸缩放在 (0, 1] 并最大化。
     solver.add(parent->scaleInfo_.sizeScale.expr > 0);
     solver.add(parent->scaleInfo_.sizeScale.expr <= 1);
-    solver.maximize(parent->scaleInfo_.sizeScale.expr);
+    // sizeScale 目标在 spaceScale 之后添加
 
     // 优化点：Row 也补齐 spaceScale 约束，避免模型出现异常间距。
     solver.add(parent->scaleInfo_.spaceScale.expr >= 0);
     solver.add(parent->scaleInfo_.spaceScale.expr <= 1);
     // 二级目标：在 sizeScale 最优的前提下，尽量保留原始间距比例
     solver.maximize(parent->scaleInfo_.spaceScale.expr);
+    solver.maximize(parent->scaleInfo_.sizeScale.expr);
 
     z3::expr mainAxisOffset =
         solver.ctx().real_const((parent->name_ + ".rowMainAxisOffset").c_str());
@@ -303,6 +308,8 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     if (children.empty()) {
         return;
     }
+    auto parentSize = layoutWrapper->GetGeometryNode()->GetFrameSize();
+    auto parentOffset = layoutWrapper->GetGeometryNode()->GetFrameOffset();
 
     // Step 2: 轻量短路优化
     // 仅在 start/start 场景且空间充足时跳过求解，减少求解器开销。
@@ -322,8 +329,8 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
                 float parentMainSize =
                     (layoutType == LayoutType::COLUMN) ? layoutWrapper->GetGeometryNode()->GetFrameSize().Height()
                                                        : layoutWrapper->GetGeometryNode()->GetFrameSize().Width();
-                float childMainOffset =
-                    (layoutType == LayoutType::COLUMN) ? childOffset.GetY() : childOffset.GetX();
+                float childMainOffset = (layoutType == LayoutType::COLUMN) ? (childOffset.GetY() - parentOffset.GetY())
+                                                                            : (childOffset.GetX() - parentOffset.GetX());
                 float childMainSize =
                     (layoutType == LayoutType::COLUMN) ? childSize.Height() : childSize.Width();
                 float tailGap = parentMainSize - (childMainOffset + childMainSize);
@@ -341,8 +348,6 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     z3::context ctx;
     z3::optimize solver(ctx);
 
-    auto parentSize = layoutWrapper->GetGeometryNode()->GetFrameSize();
-
     // 根节点用于承载父容器尺寸与缩放变量
     auto root = std::make_shared<SmartLayoutNode>(ctx, "root");
     root->setFixedSizeConstraint(solver, parentSize.Width(), parentSize.Height());
@@ -354,6 +359,14 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     initialSizes.reserve(children.size());
 
     // Step 4: 从真实节点抽取初始几何数据，构造 SmartLayoutNode
+    for (const auto& child : children) {
+        ItermScale(child, 1.0f);
+        if (child->GetHostNode() != nullptr) {
+            child->GetHostNode()->MarkDirtyNode(NG::PROPERTY_UPDATE_LAYOUT);
+        }
+        child->Layout();
+    }
+
     for (auto it = children.begin(); it != children.end(); ++it) {
         const auto& child = *it;
         const std::string childName = "child_" + std::to_string(child->GetHostNode()->GetId());
@@ -370,8 +383,8 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
 
         // 记录首元素相对父容器的初始留白
         if (isFirst) {
-            item->edgesSpace_.top = childOffset.GetY();
-            item->edgesSpace_.left = childOffset.GetX();
+            item->edgesSpace_.top = childOffset.GetY() - parentOffset.GetY();
+            item->edgesSpace_.left = childOffset.GetX() - parentOffset.GetX();
         }
 
         // 记录与下一个元素的间距（纵向/横向都记录，后续不同布局方向可复用）
@@ -389,9 +402,9 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         // 记录最后一个元素到父容器尾部的间距
         if (isLast) {
             item->edgesSpace_.bottom =
-                parentSize.Height() - childOffset.GetY() - childSize.Height();
+                parentSize.Height() - (childOffset.GetY() - parentOffset.GetY()) - childSize.Height();
             item->edgesSpace_.right =
-                parentSize.Width() - childOffset.GetX() - childSize.Width();
+                parentSize.Width() - (childOffset.GetX() - parentOffset.GetX()) - childSize.Width();
         }
 
         item->size_.width.value = childSize.Width();
@@ -432,6 +445,11 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     root->syncData(m);
 
     uint32_t index = 0;
+    float prevFinalX = 0.0f;
+    float prevFinalY = 0.0f;
+    float prevFinalW = 0.0f;
+    float prevFinalH = 0.0f;
+    int prevChildId = -1;
     for (const auto& child : children) {
         childrenLayoutNode[index]->syncData(m);
 
@@ -452,21 +470,61 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         const auto& initialSize = initialSizes[index];
         const float deltaX = offsetX - initialOffset.GetX();
         const float deltaY = offsetY - initialOffset.GetY();
+        const float finalWidth = childrenLayoutNode[index]->size_.width.value;
+        const float finalHeight = childrenLayoutNode[index]->size_.height.value;
+        const float widthDelta = finalWidth - initialSize.Width();
+        const float heightDelta = finalHeight - initialSize.Height();
+        const float childScaleX = (initialSize.Width() > 0.0f) ? (finalWidth / initialSize.Width()) : 1.0f;
+        const float childScaleY = (initialSize.Height() > 0.0f) ? (finalHeight / initialSize.Height()) : 1.0f;
+        const float sizeScale = root->scaleInfo_.sizeScale.value;
+        const float spaceScale = root->scaleInfo_.spaceScale.value;
+        const float sizeScaleDelta = sizeScale - 1.0f;
+        const float spaceScaleDelta = spaceScale - 1.0f;
         const float parentMainSize = (layoutType == LayoutType::COLUMN) ? parentSize.Height() : parentSize.Width();
-        const float initMainOffset = (layoutType == LayoutType::COLUMN) ? initialOffset.GetY() : initialOffset.GetX();
+        const float initMainOffset = (layoutType == LayoutType::COLUMN) ? (initialOffset.GetY() - parentOffset.GetY())
+                                                                         : (initialOffset.GetX() - parentOffset.GetX());
         const float initMainSize = (layoutType == LayoutType::COLUMN) ? initialSize.Height() : initialSize.Width();
-        const float finalMainOffset = (layoutType == LayoutType::COLUMN) ? offsetY : offsetX;
-        const float finalMainSize = (layoutType == LayoutType::COLUMN) ? childrenLayoutNode[index]->size_.height.value
-                                                                        : childrenLayoutNode[index]->size_.width.value;
+        const float finalMainOffset = (layoutType == LayoutType::COLUMN) ? (offsetY - parentOffset.GetY())
+                                                                          : (offsetX - parentOffset.GetX());
+        const float finalMainSize = (layoutType == LayoutType::COLUMN) ? finalHeight : finalWidth;
         const float initTailGap = parentMainSize - (initMainOffset + initMainSize);
         const float finalTailGap = parentMainSize - (finalMainOffset + finalMainSize);
-        LOGE("smart_layout solve_result type:%{public}s child:%{public}d "
+        const float spaceFromPrevBottom = (index == 0)
+            ? (offsetY - parentOffset.GetY())
+            : ((layoutType == LayoutType::COLUMN)
+                      ? (offsetY - (prevFinalY + prevFinalH))
+                      : (offsetX - (prevFinalX + prevFinalW)));
+        const float firstTopSpaceY = (index == 0) ? (offsetY - parentOffset.GetY()) : -1.0f;
+        LOGE("smart_layout solve_result type:%{public}s child:%{public}d prevChild:%{public}d "
+             "finalXYWH:[%{public}.2f %{public}.2f %{public}.2f %{public}.2f] "
+             "spaceFromPrevBottom:%{public}.2f firstTopSpaceY:%{public}.2f "
+             "initSize:[%{public}.2f %{public}.2f] finalSize:[%{public}.2f %{public}.2f] sizeDelta:[%{public}.2f %{public}.2f] "
+             "childScaleXY:[%{public}.4f %{public}.4f] sizeScale:%{public}.4f spaceScale:%{public}.4f "
+             "scaleDelta:[%{public}.4f %{public}.4f] "
              "initOffset:[%{public}.2f %{public}.2f] modelOffset:[%{public}.2f %{public}.2f] "
              "finalOffset:[%{public}.2f %{public}.2f] delta:[%{public}.2f %{public}.2f] "
-             "initSize:[%{public}.2f %{public}.2f] finalSize:[%{public}.2f %{public}.2f] "
-             "parentMainSize:%{public}.2f initTailGap:%{public}.2f finalTailGap:%{public}.2f sizeScale:%{public}.4f",
+             "parentMainSize:%{public}.2f initTailGap:%{public}.2f finalTailGap:%{public}.2f",
             layoutTypeStr,
             childId,
+            prevChildId,
+            offsetX,
+            offsetY,
+            finalWidth,
+            finalHeight,
+            spaceFromPrevBottom,
+            firstTopSpaceY,
+            initialSize.Width(),
+            initialSize.Height(),
+            finalWidth,
+            finalHeight,
+            widthDelta,
+            heightDelta,
+            childScaleX,
+            childScaleY,
+            sizeScale,
+            spaceScale,
+            sizeScaleDelta,
+            spaceScaleDelta,
             initialOffset.GetX(),
             initialOffset.GetY(),
             childrenLayoutNode[index]->position_.offsetX.value,
@@ -475,14 +533,9 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
             offsetY,
             deltaX,
             deltaY,
-            initialSize.Width(),
-            initialSize.Height(),
-            childrenLayoutNode[index]->size_.width.value,
-            childrenLayoutNode[index]->size_.height.value,
             parentMainSize,
             initTailGap,
-            finalTailGap,
-            root->scaleInfo_.sizeScale.value);
+            finalTailGap);
 
         child->GetGeometryNode()->SetFrameOffset(OffsetF(offsetX, offsetY));
 
@@ -492,6 +545,11 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         }
         child->Layout();
 
+        prevFinalX = offsetX;
+        prevFinalY = offsetY;
+        prevFinalW = finalWidth;
+        prevFinalH = finalHeight;
+        prevChildId = childId;
         index++;
     }
 }
