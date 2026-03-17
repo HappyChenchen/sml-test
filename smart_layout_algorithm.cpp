@@ -148,6 +148,8 @@ void SmartLayoutAlgorithm::addColumnLayout(z3::optimize& solver, std::shared_ptr
     // spaceScale：间距缩放系数
     solver.add(parent->scaleInfo_.spaceScale.expr >= 0);
     solver.add(parent->scaleInfo_.spaceScale.expr <= 1);
+    // 二级目标：在 sizeScale 最优的前提下，尽量保留原始间距比例
+    solver.maximize(parent->scaleInfo_.spaceScale.expr);
 
     // 主轴平移量：用于支持 mainAxisAlign_ 的 center/end。
     z3::expr mainAxisOffset =
@@ -203,6 +205,8 @@ void SmartLayoutAlgorithm::addRowLayout(z3::optimize& solver, std::shared_ptr<Sm
     // 优化点：Row 也补齐 spaceScale 约束，避免模型出现异常间距。
     solver.add(parent->scaleInfo_.spaceScale.expr >= 0);
     solver.add(parent->scaleInfo_.spaceScale.expr <= 1);
+    // 二级目标：在 sizeScale 最优的前提下，尽量保留原始间距比例
+    solver.maximize(parent->scaleInfo_.spaceScale.expr);
 
     z3::expr mainAxisOffset =
         solver.ctx().real_const((parent->name_ + ".rowMainAxisOffset").c_str());
