@@ -338,6 +338,10 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     root->setFixedSizeConstraint(solver, parentSize.Width(), parentSize.Height());
 
     std::vector<std::shared_ptr<SmartLayoutNode>> childrenLayoutNode;
+    std::vector<OffsetF> initialOffsets;
+    std::vector<SizeF> initialSizes;
+    initialOffsets.reserve(children.size());
+    initialSizes.reserve(children.size());
 
     // Step 4: 从真实节点抽取初始几何数据，构造 SmartLayoutNode
     for (auto it = children.begin(); it != children.end(); ++it) {
@@ -351,6 +355,8 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
 
         auto childOffset = child->GetGeometryNode()->GetFrameOffset();
         auto childSize = child->GetGeometryNode()->GetFrameSize();
+        initialOffsets.push_back(childOffset);
+        initialSizes.push_back(childSize);
 
         // 记录首元素相对父容器的初始留白
         if (isFirst) {
@@ -432,15 +438,26 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         }
 
         auto childId = child->GetHostNode() ? child->GetHostNode()->GetId() : -1;
+        const auto& initialOffset = initialOffsets[index];
+        const auto& initialSize = initialSizes[index];
+        const float deltaX = offsetX - initialOffset.GetX();
+        const float deltaY = offsetY - initialOffset.GetY();
         LOGE("smart_layout solve_result type:%{public}s child:%{public}d "
-             "modelOffset:[%{public}.2f %{public}.2f] finalOffset:[%{public}.2f %{public}.2f] "
-             "size:[%{public}.2f %{public}.2f] sizeScale:%{public}.4f",
+             "initOffset:[%{public}.2f %{public}.2f] modelOffset:[%{public}.2f %{public}.2f] "
+             "finalOffset:[%{public}.2f %{public}.2f] delta:[%{public}.2f %{public}.2f] "
+             "initSize:[%{public}.2f %{public}.2f] finalSize:[%{public}.2f %{public}.2f] sizeScale:%{public}.4f",
             layoutTypeStr,
             childId,
+            initialOffset.GetX(),
+            initialOffset.GetY(),
             childrenLayoutNode[index]->position_.offsetX.value,
             childrenLayoutNode[index]->position_.offsetY.value,
             offsetX,
             offsetY,
+            deltaX,
+            deltaY,
+            initialSize.Width(),
+            initialSize.Height(),
             childrenLayoutNode[index]->size_.width.value,
             childrenLayoutNode[index]->size_.height.value,
             root->scaleInfo_.sizeScale.value);
