@@ -258,3 +258,76 @@
 主轴位置：
 - `y_0 = y_parent + 45`
 - `y_1 = y_0 + h_0 + 90`
+
+## 11. 2026-03-17 同步说明
+
+### 11.1 侧轴对齐实现与文档对齐
+- 代码侧轴对齐已按方向分流：
+  - `COLUMN` 使用 `HorizontalAlign::START/CENTER/END`
+  - `ROW` 使用 `VerticalAlign::TOP/CENTER/BOTTOM`
+- `PerformSmartLayout` 中会先读取 `GetCrossAxisAlignValue(...)`，再映射到上述方向专用枚举。
+- 短路优化（跳过求解器）也改为读取方向专用枚举，不再直接依赖 `FlexAlign` 侧轴字段。
+
+### 11.2 注释增强
+- `smart_layout_algorithm.cpp` 已新增更细粒度注释，覆盖：
+  - 通用边界约束（非负 + 子项不越界）
+  - 侧轴对齐约束分流
+  - 主轴对齐约束职责边界
+  - Column/Row 建模策略
+  - 整体求解流程（采集 -> 短路 -> 建模 -> 求解 -> 回写）
+
+## 12. 2026-03-18 同步说明
+
+### 12.1 Column/Row 解耦
+- `addColumnLayout` 与 `addRowLayout` 的主轴建模逻辑已提取为统一入口：
+  - `addLinearLayout(z3::optimize&, std::shared_ptr<SmartLayoutNode>, LayoutType)`
+- `COLUMN/ROW` 仅负责传入方向，核心约束只维护一份，减少双分支改动不一致风险。
+- 解耦后保持原有行为不变：
+  - `sizeScale`、`spaceScale` 约束与目标不变
+  - 主轴链式约束公式不变
+  - 主轴/侧轴对齐公式不变
+
+### 12.2 JSON 用例测试
+- 新增 JSON 树输入用例：`tests/data/smart_layout_overflow_tree.json`
+- 新增运行脚本：`tests/smart_layout_json_case_runner.py`
+- 新增用例说明：`tests/README.md`
+- 输出文件：`tests/output/smart_layout_overflow_result.json`
+
+覆盖范围：
+- 布局方向：`COLUMN`、`ROW`
+- 主轴对齐：`FLEX_START/CENTER/FLEX_END/SPACE_BETWEEN/SPACE_AROUND/SPACE_EVENLY`
+- 侧轴对齐：
+  - `COLUMN`: `START/CENTER/END`
+  - `ROW`: `TOP/CENTER/BOTTOM`
+- 父容器尺寸：3 组
+- 总结果条目：`2 * 3 * 6 * 3 = 108`
+
+### 12.3 HTML 可视化报告
+- 新增生成脚本：`tests/generate_smart_layout_html.py`
+- `tests/smart_layout_json_case_runner.py` 在生成 result JSON 后会自动生成 HTML 报告
+- 输入：
+  - 原始树状用例：`tests/data/smart_layout_overflow_tree.json`
+  - 求解结果：`tests/output/smart_layout_overflow_result.json`
+- 输出：
+  - `tests/output/smart_layout_overflow_report.html`
+
+页面结构与交互：
+- 左侧竖向 Tab：`COLUMN / ROW` 切换
+- 顶部用例下拉框：切换“父尺寸 + 主轴 + 侧轴”组合
+- 主体左右分栏：
+  - 左：原始未调整（可见溢出）
+  - 右：智能布局结果
+
+### 12.4 代码注释补强（h/cpp）
+- `smart_layout_algorithm.h`
+  - 新增类级与函数级中文注释，明确：
+    - 成员变量语义
+    - 方向分发关系
+    - 约束构建职责边界
+- `smart_layout_algorithm.cpp`
+  - 新增阶段化中文注释（读取配置 -> 短路 -> 建模 -> 求解 -> 回写）
+  - 对关键公式与分支增加语义说明：
+    - 默认边界约束
+    - 主轴对齐约束
+    - 侧轴对齐约束
+    - 首节点/后续节点链式约束

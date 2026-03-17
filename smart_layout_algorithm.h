@@ -2,9 +2,11 @@
 
 namespace HHHH::HHH::HH {
 
+
 enum class LayoutType {
     COLUMN,
-    ROW
+    ROW，
+    FLEX
 };
 
 class SmartLayoutAlgorithm {
@@ -12,35 +14,50 @@ public:
     SmartLayoutAlgorithm() = default;
     ~SmartLayoutAlgorithm() = default;
 
-    // 对外入口：分别处理纵向布局和横向布局
+    // 对外入口：按布局方向触发智能重排。
+    // 调用方无需关心约束细节，只需传入当前布局树的根 wrapper。
     void SmartColumnLayout(LayoutWrapper* layoutWrapper);
     void SmartRowLayout(LayoutWrapper* layoutWrapper);
 
 private:
-    // 统一主流程：收集数据 -> 建模 -> 求解 -> 回写
+    // 统一主流程：收集数据 -> 建模 -> 求解 -> 回写。
+    // 参数 layoutType 决定主轴方向与侧轴映射规则。
     void PerformSmartLayout(LayoutWrapper* layoutWrapper, LayoutType layoutType);
 
-    // 对齐配置（来自 FlexLayoutProperty）
+    // 对齐配置（来自 FlexLayoutProperty）：
+    // - mainAxisAlign_：主轴对齐策略（含 SPACE_*）
+    // - horizontalAlign_：Column 模式侧轴对齐策略
+    // - verticalAlign_：Row 模式侧轴对齐策略
     FlexAlign mainAxisAlign_ = FlexAlign::FLEX_START;
     HorizontalAlign horizontalAlign_ = HorizontalAlign::CENTER;
     VerticalAlign verticalAlign_ = VerticalAlign::CENTER;
 
-    // 为不同方向添加约束
+    // 方向入口函数：
+    // - addColumnLayout / addRowLayout：轻封装，只做方向分发
+    // - addLinearLayout：Column/Row 共用主轴建模核心，避免双分支重复
     void addColumnLayout(z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent);
     void addRowLayout(z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent);
+    void addLinearLayout(z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent, LayoutType layoutType);
 
-    // 通用基础约束：非负 + 子组件在父组件内
+    // 通用基础约束：
+    // 1) 坐标、尺寸非负；
+    // 2) 子节点 frame 必须落在父节点 frame 内部。
     void AddDefaultConstraints(
         z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent, std::shared_ptr<SmartLayoutNode> child);
 
-    // 交叉轴对齐约束（例如 Column 的 X 对齐 / Row 的 Y 对齐）
+    // 侧轴对齐约束：
+    // - Column：在 X 方向应用 HorizontalAlign
+    // - Row：在 Y 方向应用 VerticalAlign
     void AddCrossAxisAlignmentConstraints(
         z3::optimize& solver,
         std::shared_ptr<SmartLayoutNode> parent,
         std::shared_ptr<SmartLayoutNode> child,
         LayoutType layoutType);
 
-    // 主轴对齐约束（FLEX_START/CENTER/FLEX_END）
+    // 主轴对齐约束：
+    // - 统一处理 FLEX_START/CENTER/FLEX_END/SPACE_*；
+    // - mainAxisOffset：内容块整体偏移；
+    // - betweenGap：SPACE_* 模式的统一间距变量。
     void AddMainAxisAlignmentConstraints(
         z3::optimize& solver,
         std::shared_ptr<SmartLayoutNode> parent,
@@ -48,13 +65,12 @@ private:
         const z3::expr& mainAxisOffset,
         const z3::expr& betweenGap);
 
-    // 快速判定：空间充足时可跳过求解器（仅在 start/start 场景）
+    // 当“主轴 start + 侧轴 start”且空间足够时，跳过求解器以减少开销。
     bool IsColumnSpaceEnough(LayoutWrapper* layoutWrapper);
     bool IsRowSpaceEnough(LayoutWrapper* layoutWrapper);
 
-    // 把求得的 sizeScale 应用到真实节点
+    // 将求得的 sizeScale 应用到真实节点（transform scale）。
     SizeF ItermScale(const RefPtr<LayoutWrapper>& iterm, float scale);
 };
 
-} // namespace HHHH::HHH::HH
-
+} 
