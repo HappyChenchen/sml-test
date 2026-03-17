@@ -124,10 +124,12 @@
 
 当前目标函数：
 - `maximize(sizeScale)`
+- `maximize(spaceScale)`（二级目标）
 
 含义：
 - 在满足所有约束时，优先让子项尽量大；
-- `spaceScale` 与 `betweenGap` 作为可行性调节量。
+- 在 `sizeScale` 最优前提下，再尽量保留原始间距比例（避免间距被压到 0）。
+- `betweenGap` 作为 `SPACE_*` 模式下的可行性调节量。
 
 ## 7. 代码对应关系
 
@@ -147,13 +149,20 @@
 
 3. 空间充足短路：
 - `start/start` 且空间足够时跳过求解器
+- 短路返回前会将子项 `transformScale` 复位到 `1.0`，避免沿用上次缩小结果
 
 4. 间距字段一致化：
 - Column 使用 `top/bottom`
 - Row 使用 `left/right`
 
-5. 大量中文注释：
+5. 交叉轴默认回退值：
+- `crossAxisAlign_ = GetCrossAxisAlignValue(FlexAlign::FLEX_START)`
+
+6. 大量中文注释：
 - 约束、变量、阶段、回写流程都已补充
+
+7. 调试日志：
+- 在短路分支与求解回写分支输出子项位置日志，便于按元素 id 排查偏移问题
 
 ## 9. 一个简短例子（SPACE_EVENLY）
 

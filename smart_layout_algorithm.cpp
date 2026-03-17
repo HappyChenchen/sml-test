@@ -292,17 +292,37 @@ bool SmartLayoutAlgorithm::IsRowSpaceEnough(LayoutWrapper* layoutWrapper)
 
 void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, LayoutType layoutType)
 {
+    const char* layoutTypeStr = (layoutType == LayoutType::COLUMN) ? "COLUMN" : "ROW";
+
     // Step 1: 拉取 Flex 配置（主轴/交叉轴对齐）
     auto layoutProperty = AceType::DynamicCast<FlexLayoutProperty>(layoutWrapper->GetLayoutProperty());
     CHECK_NULL_VOID(layoutProperty);
     mainAxisAlign_ = layoutProperty->GetMainAxisAlignValue(FlexAlign::FLEX_START);
-    crossAxisAlign_ = layoutProperty->GetCrossAxisAlignValue(FlexAlign::CENTER);
+    crossAxisAlign_ = layoutProperty->GetCrossAxisAlignValue(FlexAlign::FLEX_START);
+    const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
+    if (children.empty()) {
+        return;
+    }
 
     // Step 2: 轻量短路优化
     // 仅在 start/start 场景且空间充足时跳过求解，减少求解器开销。
     if (mainAxisAlign_ == FlexAlign::FLEX_START && crossAxisAlign_ == FlexAlign::FLEX_START) {
         if ((layoutType == LayoutType::COLUMN && IsColumnSpaceEnough(layoutWrapper)) ||
             (layoutType == LayoutType::ROW && IsRowSpaceEnough(layoutWrapper))) {
+            for (const auto& child : children) {
+                ItermScale(child, 1.0f);
+                if (child->GetHostNode() != nullptr) {
+                    child->GetHostNode()->MarkDirtyNode(NG::PROPERTY_UPDATE_LAYOUT);
+                }
+                child->Layout();
+
+                auto childOffset = child->GetGeometryNode()->GetFrameOffset();
+                auto childSize = child->GetGeometryNode()->GetFrameSize();
+                auto childId = child->GetHostNode() ? child->GetHostNode()->GetId() : -1;
+                LOGE("smart_layout short_circuit_reset type:%{public}s child:%{public}d "
+                     "offset:[%{public}.2f %{public}.2f] size:[%{public}.2f %{public}.2f]",
+                    layoutTypeStr, childId, childOffset.GetX(), childOffset.GetY(), childSize.Width(), childSize.Height());
+            }
             return;
         }
     }
@@ -310,11 +330,6 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     // Step 3: 创建求解器上下文
     z3::context ctx;
     z3::optimize solver(ctx);
-
-    const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
-    if (children.empty()) {
-        return;
-    }
 
     auto parentSize = layoutWrapper->GetGeometryNode()->GetFrameSize();
 
@@ -415,6 +430,20 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
                 offsetY += child->GetGeometryNode()->GetMargin()->top.value_or(0);
             }
         }
+
+        auto childId = child->GetHostNode() ? child->GetHostNode()->GetId() : -1;
+        LOGE("smart_layout solve_result type:%{public}s child:%{public}d "
+             "modelOffset:[%{public}.2f %{public}.2f] finalOffset:[%{public}.2f %{public}.2f] "
+             "size:[%{public}.2f %{public}.2f] sizeScale:%{public}.4f",
+            layoutTypeStr,
+            childId,
+            childrenLayoutNode[index]->position_.offsetX.value,
+            childrenLayoutNode[index]->position_.offsetY.value,
+            offsetX,
+            offsetY,
+            childrenLayoutNode[index]->size_.width.value,
+            childrenLayoutNode[index]->size_.height.value,
+            root->scaleInfo_.sizeScale.value);
 
         child->GetGeometryNode()->SetFrameOffset(OffsetF(offsetX, offsetY));
 
