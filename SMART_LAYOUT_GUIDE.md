@@ -172,6 +172,11 @@
   - `firstTopSpaceY`：首个子项相对父容器顶部的 `y`
   - `sizeScale/spaceScale` 与 `scaleDelta`
   - `initSize/finalSize/sizeDelta/childScaleXY`（对比初始宽高与缩放变化）
+  - 为避免单条日志参数过多并减少重复参数，已拆为四条并抽公共上下文：
+    - `solve_result_common`（`type/child/prevChild/isFirst`）
+    - `solve_result_geom`
+    - `solve_result_scale`
+    - `solve_result_offset`
 
 8. 放大回涨稳定性修复：
 - 在进入求解前，先把所有子项 `transformScale` 复位为 `1.0` 并重新布局

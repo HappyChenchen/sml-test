@@ -79,3 +79,30 @@
 - [SMART_LAYOUT_GUIDE.md](/d:/0_Work/sml-test/SMART_LAYOUT_GUIDE.md)
 - [CHANGELOG.md](/d:/0_Work/sml-test/CHANGELOG.md)
 - [gitlog.md](/d:/0_Work/sml-test/gitlog.md)
+
+## 2026-03-17（本次修复：日志编译报错）
+### 修复
+- 将 `solve_result` 超长单条日志拆分为 3 条，避免日志宏参数过多导致编译失败：
+  - `solve_result_basic`
+  - `solve_result_scale`
+  - `solve_result_offset`
+- 保留你要求的所有字段，只是分批输出，便于阅读和排查。
+
+### 影响文件
+- [smart_layout_algorithm.cpp](/d:/0_Work/sml-test/smart_layout_algorithm.cpp)
+- [SMART_LAYOUT_GUIDE.md](/d:/0_Work/sml-test/SMART_LAYOUT_GUIDE.md)
+- [CHANGELOG.md](/d:/0_Work/sml-test/CHANGELOG.md)
+- [gitlog.md](/d:/0_Work/sml-test/gitlog.md)
+
+## 2026-03-17（本次追加：日志公共参数抽取）
+### 修改
+- `solve_result` 日志继续拆分并抽取公共参数，减少重复：
+  - 新增公共上下文 `logCtx`（`type/child/prevChild/isFirst`）
+  - 日志拆分为 `solve_result_common / solve_result_geom / solve_result_scale / solve_result_offset`
+- 保留原有全部排查字段，仅调整组织方式，降低单条日志复杂度。
+
+### 影响文件
+- [smart_layout_algorithm.cpp](/d:/0_Work/sml-test/smart_layout_algorithm.cpp)
+- [SMART_LAYOUT_GUIDE.md](/d:/0_Work/sml-test/SMART_LAYOUT_GUIDE.md)
+- [CHANGELOG.md](/d:/0_Work/sml-test/CHANGELOG.md)
+- [gitlog.md](/d:/0_Work/sml-test/gitlog.md)

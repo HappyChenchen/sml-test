@@ -96,3 +96,25 @@
 - `solve_result` 新增 `finalXYWH`、`spaceFromPrevBottom`、`firstTopSpaceY` 字段。
 - 新增 `sizeScale/spaceScale` 与 `scaleDelta`，并输出 `initSize/finalSize/sizeDelta/childScaleXY`。
 - 保留原偏移与 tailGap 字段，兼容现有日志分析流程。
+
+## 11) 工作区未提交 | 2026-03-17 | 本地修复 | 拆分 solve_result 日志，修复编译报错
+影响文件：
+- `smart_layout_algorithm.cpp`
+- `SMART_LAYOUT_GUIDE.md`
+- `CHANGELOG.md`
+- `gitlog.md`
+
+变更说明：
+- 原 `solve_result` 单条日志参数过多，拆分为 `solve_result_basic/solve_result_scale/solve_result_offset` 三条。
+- 保留 `finalXYWH`、前后间距、scale 与初始对比等字段，不改变排查信息完整性。
+
+## 12) 工作区未提交 | 2026-03-17 | 本地修改 | solve_result 日志抽公共参数并进一步拆分
+影响文件：
+- `smart_layout_algorithm.cpp`
+- `SMART_LAYOUT_GUIDE.md`
+- `CHANGELOG.md`
+- `gitlog.md`
+
+变更说明：
+- 新增公共上下文 `logCtx`，统一承载 `type/child/prevChild/isFirst`。
+- 日志拆分为 `solve_result_common/solve_result_geom/solve_result_scale/solve_result_offset`，减少重复参数并提升可读性。
