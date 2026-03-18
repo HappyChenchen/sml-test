@@ -59,6 +59,14 @@ private:
 
     SizeF ItermScale(const RefPtr<LayoutWrapper>& iterm, float scale);
 
+    // 线性布局一轮求解的尺寸系数：
+    // - mainSizeScale_: 主轴尺寸系数
+    // - crossSizeScale_: 侧轴尺寸系数
+    // - mergedSizeScaleUpperBound_: 统一尺寸系数（取两者最小）
+    float mainSizeScale_ = 1.0f;
+    float crossSizeScale_ = 1.0f;
+    float mergedSizeScaleUpperBound_ = 1.0f;
+
     SmartFlexLayoutAlgorithm smartFlexLayoutAlgorithm_;
 };
 

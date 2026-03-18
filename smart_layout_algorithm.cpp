@@ -1,5 +1,7 @@
 #include "smart_layout_algorithm.h"
 
+#include <algorithm>
+
 namespace HHHH::HHH::HH {
 
 namespace {
@@ -9,6 +11,11 @@ namespace {
 z3::expr Float2Expr(z3::optimize& solver, float value)
 {
     return solver.ctx().real_val(std::to_string(value).c_str());
+}
+
+float Clamp01(float value)
+{
+    return std::max(0.0f, std::min(1.0f, value));
 }
 
 // 计算两个相邻子节点在指定方向上的“原始间距”：
@@ -236,6 +243,7 @@ void SmartLayoutAlgorithm::addLinearLayout(
     // 目标 1：尽量保留原始尺寸（sizeScale 最大化）。
     solver.add(parent->scaleInfo_.sizeScale.expr > 0);
     solver.add(parent->scaleInfo_.sizeScale.expr <= 1);
+    solver.add(parent->scaleInfo_.sizeScale.expr <= Float2Expr(solver, mergedSizeScaleUpperBound_));
     solver.maximize(parent->scaleInfo_.sizeScale.expr);
 
     // 目标 2：在尺寸最优前提下，尽量保留间距（spaceScale 最大化）。
@@ -454,55 +462,6 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     const char* mainAlignStr = MainAlignToString(mainAxisAlign_);
     const char* crossAlignStr = CrossAlignToString(layoutType, horizontalAlign_, verticalAlign_);
 
-    // 2：短路优化（无需进求解器）
-    const bool crossAxisIsStart = (layoutType == LayoutType::COLUMN)
-        ? (horizontalAlign_ == HorizontalAlign::START)
-        : (verticalAlign_ == VerticalAlign::TOP);
-    if (mainAxisAlign_ == FlexAlign::FLEX_START && crossAxisIsStart) {
-        const bool mainEnough = (layoutType == LayoutType::COLUMN)
-            ? IsColumnSpaceEnough(layoutWrapper)
-            : IsRowSpaceEnough(layoutWrapper);
-        const bool crossEnough = (layoutType == LayoutType::COLUMN)
-            ? IsColumnCrossSpaceEnough(layoutWrapper)
-            : IsRowCrossSpaceEnough(layoutWrapper);
-        if (mainEnough && crossEnough) {
-            for (const auto& child : children) {
-                // 复位为 1.0，确保不会沿用历史缩放状态。
-                ItermScale(child, 1.0f);
-                if (child->GetHostNode() != nullptr) {
-                    child->GetHostNode()->MarkDirtyNode(NG::PROPERTY_UPDATE_LAYOUT);
-                }
-                child->Layout();
-
-                auto childOffset = child->GetGeometryNode()->GetFrameOffset();
-                auto childSize = child->GetGeometryNode()->GetFrameSize();
-                auto childId = child->GetHostNode() ? child->GetHostNode()->GetId() : -1;
-                LOGE("smart_layout compact layout:%{public}s main:%{public}s cross:%{public}s "
-                     "childId:%{public}d parentId:%{public}d "
-                     "parentXYWH:[%{public}.2f %{public}.2f %{public}.2f %{public}.2f] "
-                     "childXYWH:[%{public}.2f %{public}.2f %{public}.2f %{public}.2f] "
-                     "spacescale:%{public}.4f crossspacescale:%{public}.4f sizescale:%{public}.4f",
-                    layoutTypeStr,
-                    mainAlignStr,
-                    crossAlignStr,
-                    childId,
-                    parentId,
-                    parentOffset.GetX(),
-                    parentOffset.GetY(),
-                    parentSize.Width(),
-                    parentSize.Height(),
-                    childOffset.GetX(),
-                    childOffset.GetY(),
-                    childSize.Width(),
-                    childSize.Height(),
-                    1.0f,
-                    1.0f,
-                    1.0f);
-            }
-            return;
-        }
-    }
-
     // 3：创建求解器与根节点
     z3::context ctx;
     z3::optimize solver(ctx);
@@ -577,6 +536,20 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
 
         childrenLayoutNode.push_back(item);
     }
+
+    float sumMainSize = 0.0f;
+    float maxCrossSize = 0.0f;
+    for (const auto& childNode : childrenLayoutNode) {
+        const float mainSize = (layoutType == LayoutType::COLUMN) ? childNode->size_.height.value : childNode->size_.width.value;
+        const float crossSize = (layoutType == LayoutType::COLUMN) ? childNode->size_.width.value : childNode->size_.height.value;
+        sumMainSize += std::max(mainSize, 0.0f);
+        maxCrossSize = std::max(maxCrossSize, std::max(crossSize, 0.0f));
+    }
+    const float parentMainSize = (layoutType == LayoutType::COLUMN) ? parentSize.Height() : parentSize.Width();
+    const float parentCrossSize = (layoutType == LayoutType::COLUMN) ? parentSize.Width() : parentSize.Height();
+    mainSizeScale_ = (sumMainSize > 0.0f) ? Clamp01(parentMainSize / sumMainSize) : 1.0f;
+    crossSizeScale_ = (maxCrossSize > 0.0f) ? Clamp01(parentCrossSize / maxCrossSize) : 1.0f;
+    mergedSizeScaleUpperBound_ = std::min(mainSizeScale_, crossSizeScale_);
 
     root->setChildren(childrenLayoutNode);
 
