@@ -18,22 +18,6 @@ float Clamp01(float value)
     return std::max(0.0f, std::min(1.0f, value));
 }
 
-// 计算两个相邻子节点在指定方向上的“原始间距”：
-// - COLUMN：next.top - (curr.top + curr.height)
-// - ROW：next.left - (curr.left + curr.width)
-// 该值作为间距基线，后续会与 spaceScale 联动。
-float CalculateSpaceBetween(const RefPtr<LayoutWrapper>& child1, const RefPtr<LayoutWrapper>& child2, LayoutType layoutType)
-{
-    auto offset1 = child1->GetGeometryNode()->GetFrameOffset();
-    auto size1 = child1->GetGeometryNode()->GetFrameSize();
-    auto offset2 = child2->GetGeometryNode()->GetFrameOffset();
-
-    if (layoutType == LayoutType::COLUMN) {
-        return offset2.GetY() - (offset1.GetY() + size1.Height());
-    }
-    return offset2.GetX() - (offset1.GetX() + size1.Width());
-}
-
 const char* LayoutTypeToString(LayoutType layoutType)
 {
     switch (layoutType) {
@@ -41,55 +25,6 @@ const char* LayoutTypeToString(LayoutType layoutType)
             return "COLUMN";
         case LayoutType::ROW:
             return "ROW";
-        case LayoutType::FLEX:
-            return "FLEX";
-        default:
-            return "UNKNOWN";
-    }
-}
-
-const char* MainAlignToString(FlexAlign align)
-{
-    switch (align) {
-        case FlexAlign::FLEX_START:
-            return "FLEX_START";
-        case FlexAlign::CENTER:
-            return "CENTER";
-        case FlexAlign::FLEX_END:
-            return "FLEX_END";
-        case FlexAlign::SPACE_BETWEEN:
-            return "SPACE_BETWEEN";
-        case FlexAlign::SPACE_AROUND:
-            return "SPACE_AROUND";
-        case FlexAlign::SPACE_EVENLY:
-            return "SPACE_EVENLY";
-        default:
-            return "UNKNOWN";
-    }
-}
-
-const char* CrossAlignToString(LayoutType layoutType, HorizontalAlign horizontalAlign, VerticalAlign verticalAlign)
-{
-    if (layoutType == LayoutType::COLUMN) {
-        switch (horizontalAlign) {
-            case HorizontalAlign::START:
-                return "START";
-            case HorizontalAlign::CENTER:
-                return "CENTER";
-            case HorizontalAlign::END:
-                return "END";
-            default:
-                return "UNKNOWN";
-        }
-    }
-
-    switch (verticalAlign) {
-        case VerticalAlign::TOP:
-            return "TOP";
-        case VerticalAlign::CENTER:
-            return "CENTER";
-        case VerticalAlign::BOTTOM:
-            return "BOTTOM";
         default:
             return "UNKNOWN";
     }
@@ -126,110 +61,23 @@ void SmartLayoutAlgorithm::AddCrossAxisAlignmentConstraints(
     std::shared_ptr<SmartLayoutNode> child,
     LayoutType layoutType)
 {
-    const z3::expr marginLeft = Float2Expr(solver, child->marginSpace_.left) * parent->scaleInfo_.crossSpaceScale.expr;
-    const z3::expr marginRight = Float2Expr(solver, child->marginSpace_.right) * parent->scaleInfo_.crossSpaceScale.expr;
-    const z3::expr marginTop = Float2Expr(solver, child->marginSpace_.top) * parent->scaleInfo_.crossSpaceScale.expr;
-    const z3::expr marginBottom = Float2Expr(solver, child->marginSpace_.bottom) * parent->scaleInfo_.crossSpaceScale.expr;
+    // 侧轴规则：不再使用对齐枚举与 margin，直接按“原始 offset 到父起点距离”缩放。
+    // - COLUMN：缩放 X 方向前导间距
+    // - ROW：缩放 Y 方向前导间距
     if (layoutType == LayoutType::COLUMN) {
-        if (horizontalAlign_ == HorizontalAlign::START) {
-            solver.add(child->position_.offsetX.expr == parent->position_.offsetX.expr + marginLeft);
-        } else if (horizontalAlign_ == HorizontalAlign::CENTER) {
-            solver.add(child->position_.offsetX.expr - (parent->position_.offsetX.expr + marginLeft) ==
-                (parent->position_.offsetX.expr + parent->size_.width.expr - marginRight) -
-                (child->position_.offsetX.expr + child->size_.width.expr));
-        } else if (horizontalAlign_ == HorizontalAlign::END) {
-            solver.add(child->position_.offsetX.expr + child->size_.width.expr ==
-                parent->position_.offsetX.expr + parent->size_.width.expr - marginRight);
-        } else {
-            solver.add(child->position_.offsetX.expr - (parent->position_.offsetX.expr + marginLeft) ==
-                (parent->position_.offsetX.expr + parent->size_.width.expr - marginRight) -
-                (child->position_.offsetX.expr + child->size_.width.expr));
-        }
+        const float crossLeadingGapRaw = child->position_.offsetX.value - parent->position_.offsetX.value;
+        const float crossLeadingGap = (crossLeadingGapRaw > 0.0f) ? crossLeadingGapRaw : 0.0f;
+        solver.add(child->position_.offsetX.expr ==
+            parent->position_.offsetX.expr +
+            Float2Expr(solver, crossLeadingGap) * parent->scaleInfo_.crossSpaceScale.expr);
         return;
     }
-    if (verticalAlign_ == VerticalAlign::TOP) {
-        solver.add(child->position_.offsetY.expr == parent->position_.offsetY.expr + marginTop);
-    } else if (verticalAlign_ == VerticalAlign::CENTER) {
-        solver.add(child->position_.offsetY.expr - (parent->position_.offsetY.expr + marginTop) ==
-            (parent->position_.offsetY.expr + parent->size_.height.expr - marginBottom) -
-            (child->position_.offsetY.expr + child->size_.height.expr));
-    } else if (verticalAlign_ == VerticalAlign::BOTTOM) {
-        solver.add(child->position_.offsetY.expr + child->size_.height.expr ==
-            parent->position_.offsetY.expr + parent->size_.height.expr - marginBottom);
-    } else {
-        solver.add(child->position_.offsetY.expr - (parent->position_.offsetY.expr + marginTop) ==
-            (parent->position_.offsetY.expr + parent->size_.height.expr - marginBottom) -
-            (child->position_.offsetY.expr + child->size_.height.expr));
-    }
+    const float crossLeadingGapRaw = child->position_.offsetY.value - parent->position_.offsetY.value;
+    const float crossLeadingGap = (crossLeadingGapRaw > 0.0f) ? crossLeadingGapRaw : 0.0f;
+    solver.add(child->position_.offsetY.expr ==
+        parent->position_.offsetY.expr +
+        Float2Expr(solver, crossLeadingGap) * parent->scaleInfo_.crossSpaceScale.expr);
 }
-void SmartLayoutAlgorithm::AddMainAxisAlignmentConstraints(
-    z3::optimize& solver,
-    std::shared_ptr<SmartLayoutNode> parent,
-    LayoutType layoutType,
-    const z3::expr& mainAxisOffset,
-    const z3::expr& betweenGap)
-{
-    // 【主轴对齐约束】
-    // 处理“整体内容块（first..last）与父容器主轴边界”的关系。
-    // 子项之间的顺序链式约束由 addLinearLayout 中逐项建立。
-    if (parent->childNode.empty()) {
-        return;
-    }
-
-    const auto& first = parent->childNode.front();
-    const auto& last = parent->childNode.back();
-
-    z3::expr startPos = (layoutType == LayoutType::COLUMN) ? first->position_.offsetY.expr : first->position_.offsetX.expr;
-    z3::expr endPos = (layoutType == LayoutType::COLUMN)
-        ? (last->position_.offsetY.expr + last->size_.height.expr)
-        : (last->position_.offsetX.expr + last->size_.width.expr);
-
-    z3::expr parentStart = (layoutType == LayoutType::COLUMN) ? parent->position_.offsetY.expr : parent->position_.offsetX.expr;
-    z3::expr parentEnd = (layoutType == LayoutType::COLUMN)
-        ? (parent->position_.offsetY.expr + parent->size_.height.expr)
-        : (parent->position_.offsetX.expr + parent->size_.width.expr);
-    const bool isSingleChild = (parent->childNode.size() == 1);
-
-    // startPos/endPos：内容块在主轴上的起止位置。
-    // parentStart/parentEnd：父容器在主轴上的起止边界。
-    if (mainAxisAlign_ == FlexAlign::FLEX_START) {
-        // 起始对齐：不引入额外偏移和等分间距。
-        solver.add(mainAxisOffset == 0);
-        solver.add(betweenGap == 0);
-    } else if (mainAxisAlign_ == FlexAlign::CENTER) {
-        // 居中：头尾留白相等。
-        solver.add(startPos - parentStart == parentEnd - endPos);
-        solver.add(betweenGap == 0);
-    } else if (mainAxisAlign_ == FlexAlign::FLEX_END) {
-        // 尾对齐：内容块末端贴父容器末端。
-        solver.add(endPos == parentEnd);
-        solver.add(betweenGap == 0);
-    } else if (mainAxisAlign_ == FlexAlign::SPACE_BETWEEN) {
-        if (isSingleChild) {
-            // 单子项在 SPACE_BETWEEN 下退化为起始对齐，避免无解。
-            solver.add(mainAxisOffset == 0);
-            solver.add(betweenGap == 0);
-        } else {
-            // 两端贴边：内部间距等分由 betweenGap 承担。
-            solver.add(startPos == parentStart);
-            solver.add(endPos == parentEnd);
-        }
-    } else if (mainAxisAlign_ == FlexAlign::SPACE_AROUND) {
-        // around：两端间距为内部间距的一半。
-        auto halfGap = betweenGap / solver.ctx().real_val("2");
-        solver.add(startPos - parentStart == halfGap);
-        solver.add(parentEnd - endPos == halfGap);
-    } else if (mainAxisAlign_ == FlexAlign::SPACE_EVENLY) {
-        // evenly：两端间距与内部间距相等。
-        solver.add(startPos - parentStart == betweenGap);
-        solver.add(parentEnd - endPos == betweenGap);
-    } else {
-        // 未知主轴对齐按 FLEX_START 处理。
-        solver.add(mainAxisOffset == 0);
-        solver.add(betweenGap == 0);
-    }
-}
-
 void SmartLayoutAlgorithm::addLinearLayout(
     z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent, LayoutType layoutType)
 {
@@ -254,19 +102,43 @@ void SmartLayoutAlgorithm::addLinearLayout(
     solver.add(parent->scaleInfo_.crossSpaceScale.expr <= 1);
     solver.maximize(parent->scaleInfo_.crossSpaceScale.expr);
 
-    // 主轴偏移量 + SPACE_* 间距变量。
-    // 变量名带方向前缀，便于调试时在模型中区分 column/row。
-    const std::string offsetVarName = parent->name_ + (isColumn ? ".columnMainAxisOffset" : ".rowMainAxisOffset");
-    const std::string gapVarName = parent->name_ + (isColumn ? ".columnBetweenGap" : ".rowBetweenGap");
-    z3::expr mainAxisOffset = solver.ctx().real_const(offsetVarName.c_str());
-    z3::expr betweenGap = solver.ctx().real_const(gapVarName.c_str());
-    solver.add(mainAxisOffset >= 0);
-    solver.add(betweenGap >= 0);
+    const float parentMainSize = isColumn ? parent->size_.height.value : parent->size_.width.value;
+    const float parentCrossSize = isColumn ? parent->size_.width.value : parent->size_.height.value;
 
-    // SPACE_* 模式下，间距由 betweenGap 统一控制。
-    const bool isSpaceAlign = (mainAxisAlign_ == FlexAlign::SPACE_BETWEEN ||
-        mainAxisAlign_ == FlexAlign::SPACE_AROUND ||
-        mainAxisAlign_ == FlexAlign::SPACE_EVENLY);
+    float totalMainSize = 0.0f;
+    float totalMainGap = 0.0f;
+    bool crossOverflow = false;
+    for (size_t i = 0; i < parent->childNode.size(); ++i) {
+        const auto& child = parent->childNode[i];
+        const float childMainSize = isColumn ? child->size_.height.value : child->size_.width.value;
+        const float childCrossSize = isColumn ? child->size_.width.value : child->size_.height.value;
+        totalMainSize += std::max(childMainSize, 0.0f);
+
+        const float childMainPos = isColumn ? child->position_.offsetY.value : child->position_.offsetX.value;
+        const float parentMainPos = isColumn ? parent->position_.offsetY.value : parent->position_.offsetX.value;
+        if (i == 0) {
+            totalMainGap += std::max(0.0f, childMainPos - parentMainPos);
+        } else {
+            const auto& prev = parent->childNode[i - 1];
+            const float prevMainPos = isColumn ? prev->position_.offsetY.value : prev->position_.offsetX.value;
+            const float prevMainSize = isColumn ? prev->size_.height.value : prev->size_.width.value;
+            totalMainGap += std::max(0.0f, childMainPos - (prevMainPos + prevMainSize));
+        }
+
+        const float childCrossPos = isColumn ? child->position_.offsetX.value : child->position_.offsetY.value;
+        const float parentCrossPos = isColumn ? parent->position_.offsetX.value : parent->position_.offsetY.value;
+        const float crossLead = std::max(0.0f, childCrossPos - parentCrossPos);
+        if (crossLead + std::max(childCrossSize, 0.0f) > parentCrossSize) {
+            crossOverflow = true;
+        }
+    }
+    const bool mainOverflow = (totalMainSize + totalMainGap > parentMainSize);
+    if (!mainOverflow) {
+        solver.add(parent->scaleInfo_.spaceScale.expr == 1);
+    }
+    if (!crossOverflow) {
+        solver.add(parent->scaleInfo_.crossSpaceScale.expr == 1);
+    }
 
     for (size_t i = 0; i < parent->childNode.size(); ++i) {
         const auto& child = parent->childNode[i];
@@ -286,30 +158,27 @@ void SmartLayoutAlgorithm::addLinearLayout(
         z3::expr parentMainPos = isColumn ? parent->position_.offsetY.expr : parent->position_.offsetX.expr;
 
         if (i == 0) {
-            // 首节点：
-            // parentMainPos + leadingGap + mainAxisOffset
-            const float leadingBaseGapRaw = isColumn ? child->edgesSpace_.top : child->edgesSpace_.left;
+            // 首节点间距：首元素到父容器主轴起点距离。
+            const float leadingBaseGapRaw = (isColumn ? child->position_.offsetY.value : child->position_.offsetX.value) -
+                (isColumn ? parent->position_.offsetY.value : parent->position_.offsetX.value);
             const float leadingBaseGap = (leadingBaseGapRaw > 0.0f) ? leadingBaseGapRaw : 0.0f;
-            z3::expr leadingGap = isSpaceAlign ? solver.ctx().real_val("0")
-                : (Float2Expr(solver, leadingBaseGap) * parent->scaleInfo_.spaceScale.expr);
-            solver.add(childMainPos == parentMainPos + leadingGap + mainAxisOffset);
+            z3::expr leadingGap = Float2Expr(solver, leadingBaseGap) * parent->scaleInfo_.spaceScale.expr;
+            solver.add(childMainPos == parentMainPos + leadingGap);
             continue;
         }
 
-        // 后续节点：
-        // prevMainPos + prevMainSize + innerGap
+        // 后续节点间距：当前 top/left 与上兄弟 bottom/right 的距离。
         const auto& prev = parent->childNode[i - 1];
         z3::expr prevMainPos = isColumn ? prev->position_.offsetY.expr : prev->position_.offsetX.expr;
         z3::expr prevMainSize = isColumn ? prev->size_.height.expr : prev->size_.width.expr;
-        const float innerBaseGapRaw = isColumn ? prev->edgesSpace_.bottom : prev->edgesSpace_.right;
+        const float childMainPosBase = isColumn ? child->position_.offsetY.value : child->position_.offsetX.value;
+        const float prevMainPosBase = isColumn ? prev->position_.offsetY.value : prev->position_.offsetX.value;
+        const float prevMainSizeBase = isColumn ? prev->size_.height.value : prev->size_.width.value;
+        const float innerBaseGapRaw = childMainPosBase - (prevMainPosBase + prevMainSizeBase);
         const float innerBaseGap = (innerBaseGapRaw > 0.0f) ? innerBaseGapRaw : 0.0f;
-        z3::expr innerGap = isSpaceAlign ? betweenGap
-            : (Float2Expr(solver, innerBaseGap) * parent->scaleInfo_.spaceScale.expr);
+        z3::expr innerGap = Float2Expr(solver, innerBaseGap) * parent->scaleInfo_.spaceScale.expr;
         solver.add(childMainPos == prevMainPos + prevMainSize + innerGap);
     }
-
-    // 最后统一补主轴对齐约束（FLEX_*/SPACE_*）。
-    AddMainAxisAlignmentConstraints(solver, parent, layoutType, mainAxisOffset, betweenGap);
 }
 
 void SmartLayoutAlgorithm::addColumnLayout(z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent)
@@ -332,122 +201,10 @@ SizeF SmartLayoutAlgorithm::ItermScale(const RefPtr<LayoutWrapper>& iterm, float
     return { 0, 0 };
 }
 
-bool SmartLayoutAlgorithm::IsColumnSpaceEnough(LayoutWrapper* layoutWrapper)
-{
-    // 快速估算：只按“子项高度总和 <= 父高度”判断是否有必要进求解器。
-    // 注意：这里是轻量判定，不考虑复杂间距与对齐项。
-    uint32_t sumOfAllChildHeight = 0;
-    const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
-    if (children.empty()) {
-        return true;
-    }
-
-    for (const auto& child : children) {
-        auto childSize = child->GetGeometryNode()->GetFrameSize();
-        sumOfAllChildHeight += childSize.Height();
-    }
-
-    return sumOfAllChildHeight <= layoutWrapper->GetGeometryNode()->GetFrameSize().Height();
-}
-
-bool SmartLayoutAlgorithm::IsColumnCrossSpaceEnough(LayoutWrapper* layoutWrapper)
-{
-    const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
-    if (children.empty()) {
-        return true;
-    }
-
-    const float parentWidth = layoutWrapper->GetGeometryNode()->GetFrameSize().Width();
-    for (const auto& child : children) {
-        const float childWidth = child->GetGeometryNode()->GetFrameSize().Width();
-        float left = 0.0f;
-        float right = 0.0f;
-        if (child->GetGeometryNode()->GetMargin()) {
-            const auto margin = child->GetGeometryNode()->GetMargin();
-            const float leftRaw = margin->left.value_or(0);
-            const float rightRaw = margin->right.value_or(0);
-            left = (leftRaw > 0.0f) ? leftRaw : 0.0f;
-            right = (rightRaw > 0.0f) ? rightRaw : 0.0f;
-        }
-        if (childWidth + left + right > parentWidth) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool SmartLayoutAlgorithm::IsRowSpaceEnough(LayoutWrapper* layoutWrapper)
-{
-    // 快速估算：只按“子项宽度总和 <= 父宽度”判断。
-    uint32_t sumOfAllChildWidth = 0;
-    const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
-    if (children.empty()) {
-        return true;
-    }
-
-    for (const auto& child : children) {
-        auto childSize = child->GetGeometryNode()->GetFrameSize();
-        sumOfAllChildWidth += childSize.Width();
-    }
-
-    return sumOfAllChildWidth <= layoutWrapper->GetGeometryNode()->GetFrameSize().Width();
-}
-
-bool SmartLayoutAlgorithm::IsRowCrossSpaceEnough(LayoutWrapper* layoutWrapper)
-{
-    const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
-    if (children.empty()) {
-        return true;
-    }
-
-    const float parentHeight = layoutWrapper->GetGeometryNode()->GetFrameSize().Height();
-    for (const auto& child : children) {
-        const float childHeight = child->GetGeometryNode()->GetFrameSize().Height();
-        float top = 0.0f;
-        float bottom = 0.0f;
-        if (child->GetGeometryNode()->GetMargin()) {
-            const auto margin = child->GetGeometryNode()->GetMargin();
-            const float topRaw = margin->top.value_or(0);
-            const float bottomRaw = margin->bottom.value_or(0);
-            top = (topRaw > 0.0f) ? topRaw : 0.0f;
-            bottom = (bottomRaw > 0.0f) ? bottomRaw : 0.0f;
-        }
-        if (childHeight + top + bottom > parentHeight) {
-            return false;
-        }
-    }
-    return true;
-}
-
 void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, LayoutType layoutType)
 {
-    // 1：读取布局属性与对齐策略
+    // 1：读取子节点
     const char* layoutTypeStr = LayoutTypeToString(layoutType);
-
-    auto layoutProperty = AceType::DynamicCast<FlexLayoutProperty>(layoutWrapper->GetLayoutProperty());
-    CHECK_NULL_VOID(layoutProperty);
-
-    mainAxisAlign_ = layoutProperty->GetMainAxisAlignValue(FlexAlign::FLEX_START);
-
-    // 侧轴对齐根据布局方向映射到专用枚举：
-    // - Column -> HorizontalAlign
-    // - Row -> VerticalAlign
-    FlexAlign crossAxisAlign = layoutProperty->GetCrossAxisAlignValue(FlexAlign::CENTER);
-    switch (crossAxisAlign) {
-        case FlexAlign::FLEX_START:
-            horizontalAlign_ = HorizontalAlign::START;
-            verticalAlign_ = VerticalAlign::TOP;
-            break;
-        case FlexAlign::FLEX_END:
-            horizontalAlign_ = HorizontalAlign::END;
-            verticalAlign_ = VerticalAlign::BOTTOM;
-            break;
-        case FlexAlign::CENTER:
-        default:
-            horizontalAlign_ = HorizontalAlign::CENTER;
-            verticalAlign_ = VerticalAlign::CENTER;
-            break;
-    }
 
     const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
     if (children.empty()) {
@@ -459,8 +216,8 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     const auto parentOffset = parentGeometry->GetFrameOffset();
     const auto parentSize = parentGeometry->GetFrameSize();
     const int32_t parentId = layoutWrapper->GetHostNode() ? layoutWrapper->GetHostNode()->GetId() : -1;
-    const char* mainAlignStr = MainAlignToString(mainAxisAlign_);
-    const char* crossAlignStr = CrossAlignToString(layoutType, horizontalAlign_, verticalAlign_);
+    const char* mainAlignStr = "RULE_BASED";
+    const char* crossAlignStr = "RULE_BASED";
 
     // 3：创建求解器与根节点
     z3::context ctx;
@@ -469,6 +226,8 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     // root 是“求解器侧父节点”，不是实际渲染节点。
     auto root = std::make_shared<SmartLayoutNode>(ctx, "root");
     root->setFixedSizeConstraint(solver, parentSize.Width(), parentSize.Height());
+    root->size_.width.value = parentSize.Width();
+    root->size_.height.value = parentSize.Height();
 
     std::vector<std::shared_ptr<SmartLayoutNode>> childrenLayoutNode;
 
@@ -478,58 +237,19 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         const std::string childName = "child_" + std::to_string(child->GetHostNode()->GetId());
         auto item = std::make_shared<SmartLayoutNode>(ctx, childName);
 
-        const bool isFirst = (it == children.begin());
-        const auto nextIt = std::next(it);
-        const bool isLast = (nextIt == children.end());
-
         auto childOffset = child->GetGeometryNode()->GetFrameOffset();
         auto childSize = child->GetGeometryNode()->GetFrameSize();
-
-        if (isFirst) {
-            // 首节点的 top/left 作为头部间距基线。
-            item->edgesSpace_.top = childOffset.GetY();
-            item->edgesSpace_.left = childOffset.GetX();
-        }
-
-        if (!isLast) {
-            // 非尾节点记录与下一节点之间的间距（纵向 + 横向都记录）。
-            const auto& nextChild = *nextIt;
-            item->edgesSpace_.bottom = CalculateSpaceBetween(child, nextChild, LayoutType::COLUMN);
-            item->edgesSpace_.right = CalculateSpaceBetween(child, nextChild, LayoutType::ROW);
-
-            if (!isFirst) {
-                item->edgesSpace_.top = childrenLayoutNode.back()->edgesSpace_.bottom;
-                item->edgesSpace_.left = childrenLayoutNode.back()->edgesSpace_.right;
-            }
-        }
-
-        if (isLast) {
-            // 尾节点记录到父容器尾边的剩余间距。
-            item->edgesSpace_.bottom = parentSize.Height() - childOffset.GetY() - childSize.Height();
-            item->edgesSpace_.right = parentSize.Width() - childOffset.GetX() - childSize.Width();
-        }
+        item->position_.offsetX.value = childOffset.GetX();
+        item->position_.offsetY.value = childOffset.GetY();
 
         item->size_.width.value = childSize.Width();
         item->size_.height.value = childSize.Height();
-        if (child->GetGeometryNode()->GetMargin()) {
-            const auto margin = child->GetGeometryNode()->GetMargin();
-            const float top = margin->top.value_or(0);
-            const float bottom = margin->bottom.value_or(0);
-            const float left = margin->left.value_or(0);
-            const float right = margin->right.value_or(0);
-            item->marginSpace_.top = (top > 0.0f) ? top : 0.0f;
-            item->marginSpace_.bottom = (bottom > 0.0f) ? bottom : 0.0f;
-            item->marginSpace_.left = (left > 0.0f) ? left : 0.0f;
-            item->marginSpace_.right = (right > 0.0f) ? right : 0.0f;
-        }
 
         if (child->GetHostTag() == "Blank") {
-            // Blank 视为空白间距：把实体尺寸并入 gap，自身尺寸置 0。
+            // Blank 视为空白间距：尺寸置 0，由后续“位置差值”转化为间距。
             if (layoutType == LayoutType::COLUMN) {
-                item->edgesSpace_.bottom += item->size_.height.value;
                 item->size_.height.value = 0;
             } else {
-                item->edgesSpace_.right += item->size_.width.value;
                 item->size_.width.value = 0;
             }
         }
@@ -577,8 +297,7 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         float offsetX = childrenLayoutNode[index]->position_.offsetX.value;
         float offsetY = childrenLayoutNode[index]->position_.offsetY.value;
 
-        // 回写前保留原逻辑：按方向附加 margin 偏移。
-        // 侧轴 margin 已进入求解约束，不在回写阶段二次偏移。
+        // 回写规则：直接使用求解坐标，不做额外 margin 偏移补偿。
 
         auto childId = child->GetHostNode() ? child->GetHostNode()->GetId() : -1;
         LOGE("smart_layout compact layout:%{public}s main:%{public}s cross:%{public}s "
@@ -623,11 +342,6 @@ void SmartLayoutAlgorithm::SmartColumnLayout(LayoutWrapper* layoutWrapper)
 void SmartLayoutAlgorithm::SmartRowLayout(LayoutWrapper* layoutWrapper)
 {
     PerformSmartLayout(layoutWrapper, LayoutType::ROW);
-}
-
-void SmartLayoutAlgorithm::SmartFlexLayout(LayoutWrapper* layoutWrapper, const SmartFlexConfig& config)
-{
-    smartFlexLayoutAlgorithm_.Layout(layoutWrapper, config);
 }
 
 } // namespace HHHH::HHH::HH
