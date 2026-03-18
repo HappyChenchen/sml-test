@@ -38,6 +38,7 @@ struct NodeSize {
 struct ScaleInfo {
     ExprAndValue spaceScale;
     ExprAndValue sizeScale;
+    ExprAndValue crossSpaceScale;
 };
 
 // 智能布局节点：是求解器侧的中间结构，不是实际渲染节点
@@ -48,6 +49,7 @@ public:
     NodeSize size_;
     ScaleInfo scaleInfo_;
     EdgesSpace edgesSpace_;
+    EdgesSpace marginSpace_;
 
     SmartLayoutNode* parentNode = { nullptr };
     std::vector<std::shared_ptr<SmartLayoutNode>> childNode = {};
@@ -58,7 +60,8 @@ public:
           position_({ { ctx.real_const((name_ + ".x").c_str()), 0 }, { ctx.real_const((name_ + ".y").c_str()), 0 } }),
           size_({ { ctx.real_const((name_ + ".w").c_str()), 0 }, { ctx.real_const((name_ + ".h").c_str()), 0 } }),
           scaleInfo_({ { ctx.real_const((name_ + ".spaceScale").c_str()), 0 },
-              { ctx.real_const((name_ + ".sizeScale").c_str()), 0 } })
+              { ctx.real_const((name_ + ".sizeScale").c_str()), 0 },
+              { ctx.real_const((name_ + ".crossSpaceScale").c_str()), 0 } })
     {
     }
 
@@ -92,6 +95,7 @@ public:
         if (!childNode.empty()) {
             scaleInfo_.sizeScale.value = RealExpr2Float(m, scaleInfo_.sizeScale.expr);
             scaleInfo_.spaceScale.value = RealExpr2Float(m, scaleInfo_.spaceScale.expr);
+            scaleInfo_.crossSpaceScale.value = RealExpr2Float(m, scaleInfo_.crossSpaceScale.expr);
         }
     }
 

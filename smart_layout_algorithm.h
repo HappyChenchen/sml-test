@@ -54,6 +54,8 @@ private:
 
     bool IsColumnSpaceEnough(LayoutWrapper* layoutWrapper);
     bool IsRowSpaceEnough(LayoutWrapper* layoutWrapper);
+    bool IsColumnCrossSpaceEnough(LayoutWrapper* layoutWrapper);
+    bool IsRowCrossSpaceEnough(LayoutWrapper* layoutWrapper);
 
     SizeF ItermScale(const RefPtr<LayoutWrapper>& iterm, float scale);
 

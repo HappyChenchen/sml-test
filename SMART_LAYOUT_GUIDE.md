@@ -18,6 +18,7 @@
 - 缩放变量：
   - `sizeScale`：尺寸缩放
   - `spaceScale`：间距缩放
+  - `crossSpaceScale`：侧轴间距（margin）缩放
 
 边界约束（两类容器通用）：
 - `x_i >= x_p`
@@ -41,7 +42,8 @@
 - 布局方向：`COLUMN / ROW`
 - 主轴对齐：`mainAxisAlign_`
 - 侧轴对齐：方向映射后的 `horizontalAlign_ / verticalAlign_`
-- 统一缩放：`sizeScale`、`spaceScale`
+- 统一缩放：`sizeScale`、`spaceScale`、`crossSpaceScale`
+- 短路优化：仅当主轴与侧轴都“足够容纳”时才跳过求解器
 
 ### 3.3 核心变量
 - 尺寸：
@@ -50,6 +52,8 @@
 - 主轴变量：
   - `mainAxisOffset >= 0`
   - `betweenGap >= 0`（仅 `SPACE_*` 模式主导）
+- 侧轴变量：
+  - `crossSpaceScale ∈ [0, 1]`
 
 ### 3.4 主轴链式公式
 `COLUMN`（主轴 = `Y`）：
@@ -68,6 +72,10 @@
   - 非 `SPACE_*`：`x_i = x_{i-1} + w_{i-1} + right_{i-1} * spaceScale`
   - `SPACE_*`：`x_i = x_{i-1} + w_{i-1} + betweenGap`
 
+注：
+- 非 `SPACE_*` 模式下，`leadingGap` 与 `innerGap` 在建模前会做非负钳制：`gap = max(0, gapRaw)`，
+  防止异常初始几何（负间距）导致主轴推进失效。
+
 ### 3.5 主轴对齐约束
 设：
 - `startPos`：内容块起点（首项主轴起点）
@@ -85,31 +93,27 @@
 
 ### 3.6 侧轴对齐公式
 `COLUMN`（侧轴 = `X`）：
-- `START`：`x_i = x_p`
-- `CENTER`：`x_i - x_p = (x_p + W_p) - (x_i + w_i)`
-- `END`：`x_i + w_i = x_p + W_p`
+- 设 `L_i = marginLeft_i * crossSpaceScale`，`R_i = marginRight_i * crossSpaceScale`
+- `START`：`x_i = x_p + L_i`
+- `CENTER`：`x_i - (x_p + L_i) = (x_p + W_p - R_i) - (x_i + w_i)`
+- `END`：`x_i + w_i = x_p + W_p - R_i`
 
 `ROW`（侧轴 = `Y`）：
-- `TOP`：`y_i = y_p`
-- `CENTER`：`y_i - y_p = (y_p + H_p) - (y_i + h_i)`
-- `BOTTOM`：`y_i + h_i = y_p + H_p`
+- 设 `T_i = marginTop_i * crossSpaceScale`，`B_i = marginBottom_i * crossSpaceScale`
+- `TOP`：`y_i = y_p + T_i`
+- `CENTER`：`y_i - (y_p + T_i) = (y_p + H_p - B_i) - (y_i + h_i)`
+- `BOTTOM`：`y_i + h_i = y_p + H_p - B_i`
 
 ### 3.7 优化目标
 - 一阶段目标优先级：
   - `maximize(sizeScale)`
   - `maximize(spaceScale)`
-- 语义：先尽量保尺寸，再尽量保间距。
+  - `maximize(crossSpaceScale)`
+- 语义：先尽量保尺寸，再尽量保主轴间距，最后尽量保侧轴 margin 间距。
 
-### 3.8 回写阶段侧轴 margin 补偿
-- 线性布局回写时只补偿侧轴 margin（主轴间距已在主轴链式约束里建模）。
-- `COLUMN`（侧轴为 `X`）：
-  - `START`：`x += margin.left`
-  - `CENTER`：`x += (margin.left - margin.right) / 2`
-  - `END`：`x -= margin.right`
-- `ROW`（侧轴为 `Y`）：
-  - `TOP`：`y += margin.top`
-  - `CENTER`：`y += (margin.top - margin.bottom) / 2`
-  - `BOTTOM`：`y -= margin.bottom`
+### 3.8 回写阶段
+- 侧轴 margin 已在约束求解阶段建模并缩放（`crossSpaceScale`）。
+- 回写阶段不再对 margin 做二次偏移，避免重复补偿导致位置漂移。
 
 ---
 

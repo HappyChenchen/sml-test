@@ -3,19 +3,30 @@
 ## 2026-03-18 (Linear Row/Column Bugfix)
 
 ### Highlights
-- Fixed `SPACE_BETWEEN` unsat case for linear layout with a single child by degrading to start alignment.
-- Fixed cross-axis margin write-back asymmetry in `row/col` by handling `start/center/end` (or `top/center/bottom`) with both sides.
+- Added cross-axis spacing solve for linear layout (`row/col`): side-axis overflow now follows "shrink spacing first, then shrink size".
+- Moved cross-axis margin handling from write-back patching into solver constraints to keep behavior consistent under scaling.
+- Short-circuit path now checks both main axis and cross axis capacity, avoiding false "fit" when side axis overflows.
 
 ### Key changes
 - `smart_layout_algorithm.cpp`
   - Updated `AddMainAxisAlignmentConstraints(...)`:
     - `SPACE_BETWEEN + single child` now enforces `mainAxisOffset = 0` and `betweenGap = 0`.
-  - Updated write-back margin logic:
-    - `COLUMN`: uses `left/right` according to `HorizontalAlign`.
-    - `ROW`: uses `top/bottom` according to `VerticalAlign`.
+  - Updated `AddCrossAxisAlignmentConstraints(...)`:
+    - Introduced `crossSpaceScale` and side margins in constraints for `COLUMN/ROW` `START/CENTER/END`.
+  - Updated optimization objectives:
+    - `maximize(sizeScale) -> maximize(spaceScale) -> maximize(crossSpaceScale)`.
+  - Removed write-back side-axis margin compensation:
+    - side margins are now solved directly in constraints.
+  - Clamped main-axis baseline gaps before solving:
+    - `leadingGap = max(0, leadingGapRaw)`
+    - `innerGap = max(0, innerGapRaw)`
+  - Added side-axis quick checks:
+    - `IsColumnCrossSpaceEnough(...)`
+    - `IsRowCrossSpaceEnough(...)`
+    - short-circuit requires both main-axis and cross-axis enough.
 - `SMART_LAYOUT_GUIDE.md`
-  - Added single-child behavior note for `SPACE_BETWEEN`.
-  - Added cross-axis margin compensation formulas in write-back stage.
+  - Added `crossSpaceScale` and side-axis constraint formulas with scaled margins.
+  - Updated write-back stage note (no second margin compensation in write-back).
 
 ## 2026-03-18
 
