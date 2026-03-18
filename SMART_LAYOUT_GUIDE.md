@@ -79,6 +79,7 @@
 - `CENTER`：`startPos - parentStart = parentEnd - endPos`
 - `FLEX_END`：`endPos = parentEnd`
 - `SPACE_BETWEEN`：`startPos = parentStart`，`endPos = parentEnd`
+  - 单子项特例：退化为 `FLEX_START`（`mainAxisOffset = 0`，`betweenGap = 0`）
 - `SPACE_AROUND`：`startPos - parentStart = betweenGap / 2`，`parentEnd - endPos = betweenGap / 2`
 - `SPACE_EVENLY`：`startPos - parentStart = betweenGap`，`parentEnd - endPos = betweenGap`
 
@@ -98,6 +99,17 @@
   - `maximize(sizeScale)`
   - `maximize(spaceScale)`
 - 语义：先尽量保尺寸，再尽量保间距。
+
+### 3.8 回写阶段侧轴 margin 补偿
+- 线性布局回写时只补偿侧轴 margin（主轴间距已在主轴链式约束里建模）。
+- `COLUMN`（侧轴为 `X`）：
+  - `START`：`x += margin.left`
+  - `CENTER`：`x += (margin.left - margin.right) / 2`
+  - `END`：`x -= margin.right`
+- `ROW`（侧轴为 `Y`）：
+  - `TOP`：`y += margin.top`
+  - `CENTER`：`y += (margin.top - margin.bottom) / 2`
+  - `BOTTOM`：`y -= margin.bottom`
 
 ---
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-03-18 (Linear Row/Column Bugfix)
+
+### Highlights
+- Fixed `SPACE_BETWEEN` unsat case for linear layout with a single child by degrading to start alignment.
+- Fixed cross-axis margin write-back asymmetry in `row/col` by handling `start/center/end` (or `top/center/bottom`) with both sides.
+
+### Key changes
+- `smart_layout_algorithm.cpp`
+  - Updated `AddMainAxisAlignmentConstraints(...)`:
+    - `SPACE_BETWEEN + single child` now enforces `mainAxisOffset = 0` and `betweenGap = 0`.
+  - Updated write-back margin logic:
+    - `COLUMN`: uses `left/right` according to `HorizontalAlign`.
+    - `ROW`: uses `top/bottom` according to `VerticalAlign`.
+- `SMART_LAYOUT_GUIDE.md`
+  - Added single-child behavior note for `SPACE_BETWEEN`.
+  - Added cross-axis margin compensation formulas in write-back stage.
+
 ## 2026-03-18
 
 ### 关键功能

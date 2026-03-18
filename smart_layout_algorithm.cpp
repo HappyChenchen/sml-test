@@ -193,6 +193,7 @@ void SmartLayoutAlgorithm::AddMainAxisAlignmentConstraints(
     z3::expr parentEnd = (layoutType == LayoutType::COLUMN)
         ? (parent->position_.offsetY.expr + parent->size_.height.expr)
         : (parent->position_.offsetX.expr + parent->size_.width.expr);
+    const bool isSingleChild = (parent->childNode.size() == 1);
 
     // startPos/endPos：内容块在主轴上的起止位置。
     // parentStart/parentEnd：父容器在主轴上的起止边界。
@@ -209,9 +210,15 @@ void SmartLayoutAlgorithm::AddMainAxisAlignmentConstraints(
         solver.add(endPos == parentEnd);
         solver.add(betweenGap == 0);
     } else if (mainAxisAlign_ == FlexAlign::SPACE_BETWEEN) {
-        // 两端贴边：内部间距等分由 betweenGap 承担。
-        solver.add(startPos == parentStart);
-        solver.add(endPos == parentEnd);
+        if (isSingleChild) {
+            // 单子项在 SPACE_BETWEEN 下退化为起始对齐，避免无解。
+            solver.add(mainAxisOffset == 0);
+            solver.add(betweenGap == 0);
+        } else {
+            // 两端贴边：内部间距等分由 betweenGap 承担。
+            solver.add(startPos == parentStart);
+            solver.add(endPos == parentEnd);
+        }
     } else if (mainAxisAlign_ == FlexAlign::SPACE_AROUND) {
         // around：两端间距为内部间距的一半。
         auto halfGap = betweenGap / solver.ctx().real_val("2");
@@ -537,10 +544,23 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
 
         // 回写前保留原逻辑：按方向附加 margin 偏移。
         if (child->GetGeometryNode()->GetMargin()) {
+            const auto margin = child->GetGeometryNode()->GetMargin();
             if (layoutType == LayoutType::COLUMN) {
-                offsetX += child->GetGeometryNode()->GetMargin()->left.value_or(0);
+                if (horizontalAlign_ == HorizontalAlign::START) {
+                    offsetX += margin->left.value_or(0);
+                } else if (horizontalAlign_ == HorizontalAlign::END) {
+                    offsetX -= margin->right.value_or(0);
+                } else {
+                    offsetX += (margin->left.value_or(0) - margin->right.value_or(0)) / 2.0f;
+                }
             } else {
-                offsetY += child->GetGeometryNode()->GetMargin()->top.value_or(0);
+                if (verticalAlign_ == VerticalAlign::TOP) {
+                    offsetY += margin->top.value_or(0);
+                } else if (verticalAlign_ == VerticalAlign::BOTTOM) {
+                    offsetY -= margin->bottom.value_or(0);
+                } else {
+                    offsetY += (margin->top.value_or(0) - margin->bottom.value_or(0)) / 2.0f;
+                }
             }
         }
 
