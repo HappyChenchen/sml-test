@@ -18,18 +18,6 @@ float Clamp01(float value)
     return std::max(0.0f, std::min(1.0f, value));
 }
 
-const char* LayoutTypeToString(LayoutType layoutType)
-{
-    switch (layoutType) {
-        case LayoutType::COLUMN:
-            return "COLUMN";
-        case LayoutType::ROW:
-            return "ROW";
-        default:
-            return "UNKNOWN";
-    }
-}
-
 } // namespace
 
 void SmartLayoutAlgorithm::AddDefaultConstraints(
@@ -204,8 +192,6 @@ SizeF SmartLayoutAlgorithm::ItermScale(const RefPtr<LayoutWrapper>& iterm, float
 void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, LayoutType layoutType)
 {
     // 1：读取子节点
-    const char* layoutTypeStr = LayoutTypeToString(layoutType);
-
     const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
     if (children.empty()) {
         return;
@@ -213,11 +199,7 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
 
     auto parentGeometry = layoutWrapper->GetGeometryNode();
     CHECK_NULL_VOID(parentGeometry);
-    const auto parentOffset = parentGeometry->GetFrameOffset();
     const auto parentSize = parentGeometry->GetFrameSize();
-    const int32_t parentId = layoutWrapper->GetHostNode() ? layoutWrapper->GetHostNode()->GetId() : -1;
-    const char* mainAlignStr = "RULE_BASED";
-    const char* crossAlignStr = "RULE_BASED";
 
     // 3：创建求解器与根节点
     z3::context ctx;
@@ -298,29 +280,6 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
         float offsetY = childrenLayoutNode[index]->position_.offsetY.value;
 
         // 回写规则：直接使用求解坐标，不做额外 margin 偏移补偿。
-
-        auto childId = child->GetHostNode() ? child->GetHostNode()->GetId() : -1;
-        LOGE("smart_layout compact layout:%{public}s main:%{public}s cross:%{public}s "
-             "childId:%{public}d parentId:%{public}d "
-             "parentXYWH:[%{public}.2f %{public}.2f %{public}.2f %{public}.2f] "
-             "childXYWH:[%{public}.2f %{public}.2f %{public}.2f %{public}.2f] "
-             "spacescale:%{public}.4f crossspacescale:%{public}.4f sizescale:%{public}.4f",
-            layoutTypeStr,
-            mainAlignStr,
-            crossAlignStr,
-            childId,
-            parentId,
-            parentOffset.GetX(),
-            parentOffset.GetY(),
-            parentSize.Width(),
-            parentSize.Height(),
-            offsetX,
-            offsetY,
-            childrenLayoutNode[index]->size_.width.value,
-            childrenLayoutNode[index]->size_.height.value,
-            root->scaleInfo_.spaceScale.value,
-            root->scaleInfo_.crossSpaceScale.value,
-            root->scaleInfo_.sizeScale.value);
 
         // 将求解坐标写回真实节点，并应用尺寸缩放。
         child->GetGeometryNode()->SetFrameOffset(OffsetF(offsetX, offsetY));
