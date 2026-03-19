@@ -47,21 +47,16 @@ double ComputeMainSizeSum(const std::shared_ptr<SmartLayoutNode>& parent, bool i
     return total;
 }
 
-double ComputeMainGapSum(const std::shared_ptr<SmartLayoutNode>& parent, bool isColumn)
+double ComputeInnerMainGapSum(const std::shared_ptr<SmartLayoutNode>& parent, bool isColumn)
 {
     if (parent == nullptr || parent->childNode.empty()) {
         return 0.0;
     }
 
     double totalGap = 0.0;
-    for (size_t i = 0; i < parent->childNode.size(); ++i) {
+    for (size_t i = 1; i < parent->childNode.size(); ++i) {
         const auto& child = parent->childNode[i];
         if (child == nullptr) {
-            continue;
-        }
-        if (i == 0) {
-            const double leadingGap = GetMainPos(child, isColumn) - GetMainPos(parent, isColumn);
-            totalGap += std::max(0.0, leadingGap);
             continue;
         }
         const auto& prev = parent->childNode[i - 1];
@@ -73,26 +68,6 @@ double ComputeMainGapSum(const std::shared_ptr<SmartLayoutNode>& parent, bool is
         totalGap += std::max(0.0, innerGap);
     }
     return totalGap;
-}
-
-bool IsCrossOverflowAtBase(const std::shared_ptr<SmartLayoutNode>& parent, bool isColumn)
-{
-    if (parent == nullptr) {
-        return false;
-    }
-    const double parentCrossPos = GetCrossPos(parent, isColumn);
-    const double parentCrossEnd = parentCrossPos + std::max(0.0, GetCrossSize(parent, isColumn));
-    for (const auto& child : parent->childNode) {
-        if (child == nullptr) {
-            continue;
-        }
-        const double childCrossPos = GetCrossPos(child, isColumn);
-        const double childCrossEnd = childCrossPos + std::max(0.0, GetCrossSize(child, isColumn));
-        if (childCrossPos < parentCrossPos - EPS || childCrossEnd > parentCrossEnd + EPS) {
-            return true;
-        }
-    }
-    return false;
 }
 
 double ComputeCrossSizeUpperBound(const std::shared_ptr<SmartLayoutNode>& parent, bool isColumn)
@@ -113,98 +88,6 @@ double ComputeCrossSizeUpperBound(const std::shared_ptr<SmartLayoutNode>& parent
         upperBound = std::min(upperBound, Clamp01(parentCrossSize / childCrossSize));
     }
     return upperBound;
-}
-
-double ComputeMainSizeUpperBound(const std::shared_ptr<SmartLayoutNode>& parent, bool isColumn)
-{
-    if (parent == nullptr) {
-        return 1.0;
-    }
-    const double totalMainSize = ComputeMainSizeSum(parent, isColumn);
-    const double parentMainSize = std::max(0.0, GetMainSize(parent, isColumn));
-    if (totalMainSize <= EPS || totalMainSize <= parentMainSize + EPS) {
-        return 1.0;
-    }
-    return Clamp01(parentMainSize / totalMainSize);
-}
-
-enum class CrossAlignKind {
-    START,
-    CENTER,
-    END,
-};
-
-CrossAlignKind ResolveCrossAlign(LayoutType layoutType, HorizontalAlign horizontalAlign, VerticalAlign verticalAlign)
-{
-    if (layoutType == LayoutType::COLUMN) {
-        if (horizontalAlign == HorizontalAlign::END) {
-            return CrossAlignKind::END;
-        }
-        if (horizontalAlign == HorizontalAlign::CENTER) {
-            return CrossAlignKind::CENTER;
-        }
-        return CrossAlignKind::START;
-    }
-
-    if (verticalAlign == VerticalAlign::BOTTOM) {
-        return CrossAlignKind::END;
-    }
-    if (verticalAlign == VerticalAlign::CENTER) {
-        return CrossAlignKind::CENTER;
-    }
-    return CrossAlignKind::START;
-}
-
-double ComputeChildCrossSpaceUpper(const std::shared_ptr<SmartLayoutNode>& parent,
-    const std::shared_ptr<SmartLayoutNode>& child, bool isColumn, CrossAlignKind alignKind, double sizeScale, bool& feasible)
-{
-    feasible = true;
-    const double parentCrossPos = GetCrossPos(parent, isColumn);
-    const double parentCrossSize = std::max(0.0, GetCrossSize(parent, isColumn));
-    const double childCrossPosBase = GetCrossPos(child, isColumn);
-    const double childCrossSizeBase = std::max(0.0, GetCrossSize(child, isColumn));
-
-    double available = parentCrossSize - childCrossSizeBase * sizeScale;
-    if (available < -EPS) {
-        feasible = false;
-        return 0.0;
-    }
-    if (available < 0.0) {
-        available = 0.0;
-    }
-
-    double baselineBase = parentCrossPos;
-    if (alignKind == CrossAlignKind::CENTER) {
-        baselineBase = parentCrossPos + (parentCrossSize - childCrossSizeBase) * 0.5;
-    } else if (alignKind == CrossAlignKind::END) {
-        baselineBase = parentCrossPos + parentCrossSize - childCrossSizeBase;
-    }
-
-    const double restoredGap = childCrossPosBase - baselineBase;
-    if (alignKind == CrossAlignKind::START) {
-        if (restoredGap < -EPS) {
-            return 0.0;
-        }
-        if (restoredGap > EPS) {
-            return Clamp01(available / restoredGap);
-        }
-        return 1.0;
-    }
-
-    if (alignKind == CrossAlignKind::END) {
-        if (restoredGap > EPS) {
-            return 0.0;
-        }
-        if (restoredGap < -EPS) {
-            return Clamp01(available / (-restoredGap));
-        }
-        return 1.0;
-    }
-
-    if (std::abs(restoredGap) <= EPS) {
-        return 1.0;
-    }
-    return Clamp01((available * 0.5) / std::abs(restoredGap));
 }
 
 } // namespace
@@ -239,49 +122,32 @@ void SmartLayoutAlgorithm::AddCrossAxisAlignmentConstraints(localsmt::Engine& so
     }
 
     if (layoutType == LayoutType::COLUMN) {
-        const float parentCrossPosBase = parent->position_.offsetX.value;
-        const float parentCrossSizeBase = parent->size_.width.value;
-        const float childCrossPosBase = child->position_.offsetX.value;
-        const float childCrossSizeBase = child->size_.width.value;
-
-        float baselineBase = parentCrossPosBase;
-        localsmt::Expr baselineExpr = parent->position_.offsetX.expr;
         if (horizontalAlign_ == HorizontalAlign::CENTER) {
-            baselineBase = parentCrossPosBase + (parentCrossSizeBase - childCrossSizeBase) * 0.5f;
-            baselineExpr = parent->position_.offsetX.expr + (parent->size_.width.expr - child->size_.width.expr) * 0.5;
+            solver.add(child->position_.offsetX.expr ==
+                parent->position_.offsetX.expr + (parent->size_.width.expr - child->size_.width.expr) * 0.5);
         } else if (horizontalAlign_ == HorizontalAlign::END) {
-            baselineBase = parentCrossPosBase + parentCrossSizeBase - childCrossSizeBase;
-            baselineExpr = parent->position_.offsetX.expr + parent->size_.width.expr - child->size_.width.expr;
+            solver.add(child->position_.offsetX.expr ==
+                parent->position_.offsetX.expr + parent->size_.width.expr - child->size_.width.expr);
+        } else {
+            solver.add(child->position_.offsetX.expr == parent->position_.offsetX.expr);
         }
-
-        const float restoredGap = childCrossPosBase - baselineBase;
-        solver.add(child->position_.offsetX.expr == baselineExpr + restoredGap * parent->scaleInfo_.crossSpaceScale.expr);
         return;
     }
 
-    const float parentCrossPosBase = parent->position_.offsetY.value;
-    const float parentCrossSizeBase = parent->size_.height.value;
-    const float childCrossPosBase = child->position_.offsetY.value;
-    const float childCrossSizeBase = child->size_.height.value;
-
-    float baselineBase = parentCrossPosBase;
-    localsmt::Expr baselineExpr = parent->position_.offsetY.expr;
     if (verticalAlign_ == VerticalAlign::CENTER) {
-        baselineBase = parentCrossPosBase + (parentCrossSizeBase - childCrossSizeBase) * 0.5f;
-        baselineExpr = parent->position_.offsetY.expr + (parent->size_.height.expr - child->size_.height.expr) * 0.5;
+        solver.add(child->position_.offsetY.expr ==
+            parent->position_.offsetY.expr + (parent->size_.height.expr - child->size_.height.expr) * 0.5);
     } else if (verticalAlign_ == VerticalAlign::BOTTOM) {
-        baselineBase = parentCrossPosBase + parentCrossSizeBase - childCrossSizeBase;
-        baselineExpr = parent->position_.offsetY.expr + parent->size_.height.expr - child->size_.height.expr;
+        solver.add(child->position_.offsetY.expr ==
+            parent->position_.offsetY.expr + parent->size_.height.expr - child->size_.height.expr);
+    } else {
+        solver.add(child->position_.offsetY.expr == parent->position_.offsetY.expr);
     }
-
-    const float restoredGap = childCrossPosBase - baselineBase;
-    solver.add(child->position_.offsetY.expr == baselineExpr + restoredGap * parent->scaleInfo_.crossSpaceScale.expr);
 }
 
 void SmartLayoutAlgorithm::ComputeSolvedScales(const std::shared_ptr<SmartLayoutNode>& parent, LayoutType layoutType)
 {
     solvedMainSpaceScale_ = 1.0f;
-    solvedCrossSpaceScale_ = 1.0f;
     solvedSizeScale_ = 1.0f;
     if (parent == nullptr || parent->childNode.empty()) {
         return;
@@ -290,44 +156,39 @@ void SmartLayoutAlgorithm::ComputeSolvedScales(const std::shared_ptr<SmartLayout
     const bool isColumn = (layoutType == LayoutType::COLUMN);
     const double parentMainSize = std::max(0.0, GetMainSize(parent, isColumn));
     const double totalMainSize = ComputeMainSizeSum(parent, isColumn);
-    const double totalMainGap = ComputeMainGapSum(parent, isColumn);
-    const bool mainOverflowAtBase = (totalMainSize + totalMainGap > parentMainSize + EPS);
+    const double totalInnerMainGap = ComputeInnerMainGapSum(parent, isColumn);
 
-    const double mainSizeUpper = ComputeMainSizeUpperBound(parent, isColumn);
     const double crossSizeUpper = ComputeCrossSizeUpperBound(parent, isColumn);
-    const double sizeScale = Clamp01(std::min(mainSizeUpper, crossSizeUpper));
+    // Use 1-xxx form for [0,1] variables:
+    // sizeScale = 1 - sizeShrink, spaceScale = 1 - spaceShrink.
+    double sizeShrink = Clamp01(1.0 - Clamp01(crossSizeUpper));
+    double spaceShrink = 0.0;
+    double sizeScale = 1.0 - sizeShrink;
+
+    if (totalMainSize > EPS) {
+        const double mainNeedWithCurrentScale = totalMainSize * sizeScale + totalInnerMainGap;
+        if (mainNeedWithCurrentScale > parentMainSize + EPS) {
+            if (totalInnerMainGap > EPS) {
+                const double requiredSpaceShrink = (mainNeedWithCurrentScale - parentMainSize) / totalInnerMainGap;
+                spaceShrink = Clamp01(requiredSpaceShrink);
+            } else {
+                spaceShrink = 1.0;
+            }
+
+            const double spaceScaleAfterShrink = 1.0 - spaceShrink;
+            if (totalMainSize * sizeScale + totalInnerMainGap * spaceScaleAfterShrink > parentMainSize + EPS) {
+                spaceShrink = 1.0;
+                const double mainSizeUpper = Clamp01(parentMainSize / totalMainSize);
+                const double mainSizeShrink = Clamp01(1.0 - mainSizeUpper);
+                sizeShrink = std::max(sizeShrink, mainSizeShrink);
+                sizeScale = 1.0 - sizeShrink;
+            }
+        }
+    }
+
+    const double spaceScale = 1.0 - spaceShrink;
     solvedSizeScale_ = static_cast<float>(sizeScale);
-
-    if (mainOverflowAtBase) {
-        if (totalMainGap <= EPS) {
-            solvedMainSpaceScale_ = 0.0f;
-        } else {
-            const double remainingMain = parentMainSize - totalMainSize * sizeScale;
-            solvedMainSpaceScale_ = static_cast<float>(Clamp01(remainingMain / totalMainGap));
-        }
-    }
-
-    const bool crossOverflowAtBase = IsCrossOverflowAtBase(parent, isColumn);
-    if (!crossOverflowAtBase) {
-        solvedCrossSpaceScale_ = 1.0f;
-        return;
-    }
-
-    const CrossAlignKind crossAlign = ResolveCrossAlign(layoutType, horizontalAlign_, verticalAlign_);
-    double crossUpper = 1.0;
-    for (const auto& child : parent->childNode) {
-        if (child == nullptr) {
-            continue;
-        }
-        bool feasible = true;
-        const double childUpper = ComputeChildCrossSpaceUpper(parent, child, isColumn, crossAlign, sizeScale, feasible);
-        if (!feasible) {
-            crossUpper = 0.0;
-            break;
-        }
-        crossUpper = std::min(crossUpper, childUpper);
-    }
-    solvedCrossSpaceScale_ = static_cast<float>(Clamp01(crossUpper));
+    solvedMainSpaceScale_ = static_cast<float>(spaceScale);
 }
 
 void SmartLayoutAlgorithm::addLinearLayout(
@@ -348,7 +209,7 @@ void SmartLayoutAlgorithm::addLinearLayout(
     // SAT-first: scales are solved outside and injected as constants to avoid non-deterministic/unsat optimize behavior.
     solver.add(parent->scaleInfo_.sizeScale.expr == solvedSizeScale_);
     solver.add(parent->scaleInfo_.spaceScale.expr == solvedMainSpaceScale_);
-    solver.add(parent->scaleInfo_.crossSpaceScale.expr == solvedCrossSpaceScale_);
+    solver.add(parent->scaleInfo_.crossSpaceScale.expr == 1.0);
 
     for (size_t i = 0; i < parent->childNode.size(); ++i) {
         const auto& child = parent->childNode[i];
@@ -362,16 +223,10 @@ void SmartLayoutAlgorithm::addLinearLayout(
         AddDefaultConstraints(solver, parent, child);
         AddCrossAxisAlignmentConstraints(solver, parent, child, layoutType);
 
-        const localsmt::Expr childMainPos = isColumn ? child->position_.offsetY.expr : child->position_.offsetX.expr;
-        const localsmt::Expr parentMainPos = isColumn ? parent->position_.offsetY.expr : parent->position_.offsetX.expr;
         if (i == 0) {
-            const float leadingBaseGapRaw = (isColumn ? child->position_.offsetY.value : child->position_.offsetX.value) -
-                (isColumn ? parent->position_.offsetY.value : parent->position_.offsetX.value);
-            const float leadingBaseGap = (leadingBaseGapRaw > 0.0f) ? leadingBaseGapRaw : 0.0f;
-            solver.add(childMainPos == parentMainPos + leadingBaseGap * parent->scaleInfo_.spaceScale.expr);
             continue;
         }
-
+        const localsmt::Expr childMainPos = isColumn ? child->position_.offsetY.expr : child->position_.offsetX.expr;
         const auto& prev = parent->childNode[i - 1];
         if (prev == nullptr) {
             continue;
@@ -384,6 +239,17 @@ void SmartLayoutAlgorithm::addLinearLayout(
         const float innerBaseGapRaw = childMainPosBase - (prevMainPosBase + prevMainSizeBase);
         const float innerBaseGap = (innerBaseGapRaw > 0.0f) ? innerBaseGapRaw : 0.0f;
         solver.add(childMainPos == prevMainPos + prevMainSize + innerBaseGap * parent->scaleInfo_.spaceScale.expr);
+    }
+
+    const auto& lastChild = parent->childNode.back();
+    if (lastChild != nullptr) {
+        if (isColumn) {
+            solver.add(lastChild->position_.offsetY.expr + lastChild->size_.height.expr ==
+                parent->position_.offsetY.expr + parent->size_.height.expr);
+        } else {
+            solver.add(lastChild->position_.offsetX.expr + lastChild->size_.width.expr ==
+                parent->position_.offsetX.expr + parent->size_.width.expr);
+        }
     }
 }
 

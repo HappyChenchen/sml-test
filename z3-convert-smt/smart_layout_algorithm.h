@@ -30,7 +30,6 @@ private:
 
     // Solved scale values written into model as hard equalities.
     float solvedMainSpaceScale_ = 1.0f;
-    float solvedCrossSpaceScale_ = 1.0f;
     float solvedSizeScale_ = 1.0f;
 
     void addColumnLayout(localsmt::Engine& solver, const std::shared_ptr<SmartLayoutNode>& parent);
@@ -50,4 +49,3 @@ private:
 };
 
 } // namespace HHHH::HHH::HH
-
