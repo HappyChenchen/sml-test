@@ -39,7 +39,8 @@ public:
     localsmt::Engine engine;
     LayoutType layoutType;
     FlexAlign mainAxisAlign_ = FlexAlign::FLEX_START;
-    FlexAlign crossAxisAlign_ = FlexAlign::FLEX_START;
+    HorizontalAlign horizontalAlign_ = HorizontalAlign::START;
+    VerticalAlign verticalAlign_ = VerticalAlign::TOP;
     SizeF parentSize;
     std::vector<std::shared_ptr<SmartLayoutNode>> childrenLayoutNode;
     std::shared_ptr<SmartLayoutNode> root;

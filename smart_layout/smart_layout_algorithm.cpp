@@ -80,8 +80,11 @@ void SmartLayoutAlgorithm::addColumnLayout(LayoutContext& context, std::shared_p
 
         // 默认约束
         AddDefaultConstraints(context.engine, parent, child);
-        if (context.crossAxisAlign_ == FlexAlign::FLEX_START) {
+        if (context.horizontalAlign_ == HorizontalAlign::START) {
             context.engine.add(child->position_.offsetX.expr == parent->position_.offsetX.expr);
+        } else if (context.horizontalAlign_ == HorizontalAlign::END) {
+            context.engine.add(child->position_.offsetX.expr + child->size_.width.expr ==
+                parent->position_.offsetX.expr + parent->size_.width.expr);
         } else {
             context.engine.add(child->position_.offsetX.expr - parent->position_.offsetX.expr ==
                       parent->position_.offsetX.expr + parent->size_.width.expr -
@@ -130,13 +133,13 @@ void SmartLayoutAlgorithm::addRowLayout(LayoutContext& context, std::shared_ptr<
         AddDefaultConstraints(context.engine, parent, child);
 
         // 水平约束保证元素垂直对齐
-        if (context.crossAxisAlign_ == FlexAlign::FLEX_START) {
+        if (context.verticalAlign_ == VerticalAlign::TOP) {
             context.engine.add(child->position_.offsetY.expr == parent->position_.offsetY.expr);
-        } else if (context.crossAxisAlign_ == FlexAlign::CENTER) {
+        } else if (context.verticalAlign_ == VerticalAlign::CENTER) {
             context.engine.add(child->position_.offsetY.expr - parent->position_.offsetY.expr ==
                       parent->position_.offsetY.expr + parent->size_.height.expr -
                       child->position_.offsetY.expr - child->size_.height.expr);
-        } else if (context.crossAxisAlign_ == FlexAlign::FLEX_END) {
+        } else if (context.verticalAlign_ == VerticalAlign::BOTTOM) {
             context.engine.add(child->position_.offsetY.expr + child->size_.height.expr ==
                 parent->position_.offsetY.expr + parent->size_.height.expr);
         }
@@ -241,7 +244,22 @@ bool SmartLayoutAlgorithm::InitializeLayoutContext(LayoutContext& context, Layou
     auto layoutProperty = AceType::DynamicCast<FlexLayoutProperty>(layoutWrapper->GetLayoutProperty());
     if (layoutProperty) {
         context.mainAxisAlign_ = layoutProperty->GetMainAxisAlignValue(FlexAlign::FLEX_START);
-        context.crossAxisAlign_ = layoutProperty->GetCrossAxisAlignValue(FlexAlign::CENTER);
+        const auto crossAxisAlign = layoutProperty->GetCrossAxisAlignValue(FlexAlign::CENTER);
+        switch (crossAxisAlign) {
+            case FlexAlign::FLEX_START:
+                context.horizontalAlign_ = HorizontalAlign::START;
+                context.verticalAlign_ = VerticalAlign::TOP;
+                break;
+            case FlexAlign::FLEX_END:
+                context.horizontalAlign_ = HorizontalAlign::END;
+                context.verticalAlign_ = VerticalAlign::BOTTOM;
+                break;
+            case FlexAlign::CENTER:
+            default:
+                context.horizontalAlign_ = HorizontalAlign::CENTER;
+                context.verticalAlign_ = VerticalAlign::CENTER;
+                break;
+        }
     }
 
     // 设置父容器尺寸
