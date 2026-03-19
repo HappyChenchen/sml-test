@@ -518,9 +518,11 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     };
 
     if (solver.solve()) {
+        LOGD("cy_debug primary solve success");
         applySolvedResult(solver, root, childrenLayoutNode);
         return;
     }
+    LOGE("cy_debug primary solve failed, entering fallback");
 
     // Hard fallback to keep SAT: degrade to zero-size, zero-gap placement at parent origin.
     localsmt::Engine fallbackSolver;
@@ -559,8 +561,10 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     }
 
     if (!fallbackSolver.solve()) {
+        LOGE("cy_debug fallback solve failed");
         return;
     }
+    LOGD("cy_debug fallback solve success");
     applySolvedResult(fallbackSolver, fallbackRoot, fallbackChildren);
 }
 
