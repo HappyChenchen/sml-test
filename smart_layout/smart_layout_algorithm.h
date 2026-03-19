@@ -33,18 +33,11 @@ enum class LayoutType {
     ROW
 };
 
-enum class SolveMode {
-    STRICT_END_ALIGN,
-    RELAX_END_ALIGN,
-    RELAX_END_ALIGN_ZERO_SPACE
-};
-
 class LayoutContext {
 public:
     LayoutContext() = default;
     localsmt::Engine engine;
     LayoutType layoutType;
-    SolveMode solveMode = SolveMode::STRICT_END_ALIGN;
     FlexAlign mainAxisAlign_ = FlexAlign::FLEX_START;
     HorizontalAlign horizontalAlign_ = HorizontalAlign::START;
     VerticalAlign verticalAlign_ = VerticalAlign::TOP;

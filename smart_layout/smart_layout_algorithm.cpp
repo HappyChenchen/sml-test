@@ -14,7 +14,6 @@
  */
 
 #include <algorithm>
-#include <array>
 #include <codecvt>
 #include <string>
 #include "core/components_ng/pattern/flex/flex_layout_property.h"
@@ -63,25 +62,19 @@ void SmartLayoutAlgorithm::addColumnLayout(LayoutContext& context, std::shared_p
         maxChildWidth = std::max(maxChildWidth, child->size_.width.value);
     }
 
-    // Keep sizeScale as a solver variable, only add axis-fit upper bounds.
-    if (sumOfAllChildHeight > 0) {
-        double mainAxisUpper = static_cast<double>(parent->size_.height.value / sumOfAllChildHeight);
-        if (mainAxisUpper < 1.0) {
-            context.engine.add(parent->scaleInfo_.sizeScale.expr <= mainAxisUpper);
-        }
+    float mainAxisScale = 1.0f;
+    if (sumOfAllChildHeight > parent->size_.height.value && sumOfAllChildHeight > 0) {
+        mainAxisScale = parent->size_.height.value / sumOfAllChildHeight;
     }
-    if (maxChildWidth > 0) {
-        double crossAxisUpper = static_cast<double>(parent->size_.width.value / maxChildWidth);
-        if (crossAxisUpper < 1.0) {
-            context.engine.add(parent->scaleInfo_.sizeScale.expr <= crossAxisUpper);
-        }
+    float crossAxisScale = 1.0f;
+    if (maxChildWidth > parent->size_.width.value && maxChildWidth > 0) {
+        crossAxisScale = parent->size_.width.value / maxChildWidth;
     }
+    float finalScale = std::min(mainAxisScale, crossAxisScale);
+    context.engine.add(parent->scaleInfo_.sizeScale.expr == static_cast<double>(finalScale));
 
     context.engine.add(parent->scaleInfo_.spaceScale.expr >= 0);
     context.engine.add(parent->scaleInfo_.spaceScale.expr <= 1);
-    if (context.solveMode == SolveMode::RELAX_END_ALIGN_ZERO_SPACE) {
-        context.engine.add(parent->scaleInfo_.spaceScale.expr == 0);
-    }
 
     for (size_t i = 0; i < parent->childNode.size(); ++i) {
         std::shared_ptr<SmartLayoutNode> child = parent->childNode[i];
@@ -115,10 +108,8 @@ void SmartLayoutAlgorithm::addColumnLayout(LayoutContext& context, std::shared_p
         }
 
         if (i == parent->childNode.size() - 1) {
-            if (context.solveMode == SolveMode::STRICT_END_ALIGN) {
-                context.engine.add(child->position_.offsetY.expr + child->size_.height.expr + 1 >=
-                    parent->position_.offsetY.expr + parent->size_.height.expr);
-            }
+            context.engine.add(child->position_.offsetY.expr + child->size_.height.expr + 1 >=
+                parent->position_.offsetY.expr + parent->size_.height.expr);
             context.engine.add(child->position_.offsetY.expr + child->size_.height.expr <=
                 parent->position_.offsetY.expr + parent->size_.height.expr);
         }
@@ -133,25 +124,19 @@ void SmartLayoutAlgorithm::addRowLayout(LayoutContext& context, std::shared_ptr<
         maxChildHeight = std::max(maxChildHeight, child->size_.height.value);
     }
 
-    // Keep sizeScale as a solver variable, only add axis-fit upper bounds.
-    if (sumOfAllChildWidth > 0) {
-        double mainAxisUpper = static_cast<double>(parent->size_.width.value / sumOfAllChildWidth);
-        if (mainAxisUpper < 1.0) {
-            context.engine.add(parent->scaleInfo_.sizeScale.expr <= mainAxisUpper);
-        }
+    float mainAxisScale = 1.0f;
+    if (sumOfAllChildWidth > parent->size_.width.value && sumOfAllChildWidth > 0) {
+        mainAxisScale = parent->size_.width.value / sumOfAllChildWidth;
     }
-    if (maxChildHeight > 0) {
-        double crossAxisUpper = static_cast<double>(parent->size_.height.value / maxChildHeight);
-        if (crossAxisUpper < 1.0) {
-            context.engine.add(parent->scaleInfo_.sizeScale.expr <= crossAxisUpper);
-        }
+    float crossAxisScale = 1.0f;
+    if (maxChildHeight > parent->size_.height.value && maxChildHeight > 0) {
+        crossAxisScale = parent->size_.height.value / maxChildHeight;
     }
+    float finalScale = std::min(mainAxisScale, crossAxisScale);
+    context.engine.add(parent->scaleInfo_.sizeScale.expr == static_cast<double>(finalScale));
 
     context.engine.add(parent->scaleInfo_.spaceScale.expr >= 0);
     context.engine.add(parent->scaleInfo_.spaceScale.expr <= 1);
-    if (context.solveMode == SolveMode::RELAX_END_ALIGN_ZERO_SPACE) {
-        context.engine.add(parent->scaleInfo_.spaceScale.expr == 0);
-    }
 
     for (size_t i = 0; i < parent->childNode.size(); ++i) {
         std::shared_ptr<SmartLayoutNode> child = parent->childNode[i];
@@ -183,11 +168,9 @@ void SmartLayoutAlgorithm::addRowLayout(LayoutContext& context, std::shared_ptr<
         }
 
         if (i == parent->childNode.size() - 1) {
-            if (context.solveMode == SolveMode::STRICT_END_ALIGN) {
-                context.engine.add(child->position_.offsetX.expr + child->size_.width.expr +
-                    child->edgesSpace_.right * parent->scaleInfo_.spaceScale.expr + 1 >=
-                    parent->position_.offsetX.expr + parent->size_.width.expr);
-            }
+            context.engine.add(child->position_.offsetX.expr + child->size_.width.expr +
+                child->edgesSpace_.right * parent->scaleInfo_.spaceScale.expr + 1 >=
+                parent->position_.offsetX.expr + parent->size_.width.expr);
             context.engine.add(child->position_.offsetX.expr + child->size_.width.expr +
                 child->edgesSpace_.right * parent->scaleInfo_.spaceScale.expr <=
                 parent->position_.offsetX.expr + parent->size_.width.expr);
@@ -259,27 +242,18 @@ float CalculateSpaceBetween(const RefPtr<LayoutWrapper>& child1, const RefPtr<La
 
 void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, LayoutType layoutType)
 {
-    constexpr std::array<SolveMode, 3> kSolveModes = {
-        SolveMode::STRICT_END_ALIGN,
-        SolveMode::RELAX_END_ALIGN,
-        SolveMode::RELAX_END_ALIGN_ZERO_SPACE,
-    };
-
-    for (auto solveMode : kSolveModes) {
-        LayoutContext context;
-        context.solveMode = solveMode;
-        if (!InitializeLayoutContext(context, layoutWrapper, layoutType)) {
-            LOGE("cr_debug smart layout init failed");
-            return;
-        }
-        ProcessLayoutChildren(context, layoutWrapper);
-        ApplyLayoutConstraints(context);
-        if (SolveLayout(context)) {
-            ApplyLayoutResults(context, layoutWrapper);
-            return;
-        }
+    LayoutContext context;
+    if (!InitializeLayoutContext(context, layoutWrapper, layoutType)) {
+        LOGE("cr_debug smart layout init failed");
+        return;
     }
-    LOGE("cr_debug localsmt failed in all solve modes");
+    ProcessLayoutChildren(context, layoutWrapper);
+    ApplyLayoutConstraints(context);
+    if (!SolveLayout(context)) {
+        LOGE("cr_debug localsmt failed to find solution!");
+        return;
+    }
+    ApplyLayoutResults(context, layoutWrapper);
 }
 
 bool SmartLayoutAlgorithm::InitializeLayoutContext(LayoutContext& context, LayoutWrapper* layoutWrapper,

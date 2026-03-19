@@ -68,7 +68,7 @@ public:
           size_({{engine.var((name_ + "_w").c_str(), 0, 10000), 0}, 
                   {engine.var((name_ + "_h").c_str(), 0, 10000), 0}}),
           scaleInfo_({{engine.var((name_ + "spaceScale").c_str(), 0, 1), 0},
-                      {engine.var((name_ + "sizeScale").c_str(), 0, 1), 0}}),
+                      {engine.var((name_ + "sizeScale").c_str(), 0.3, 1), 0}}),
           space(engine.var((name_ + "space").c_str(), 0, 1000))
     {
     }

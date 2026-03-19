@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-03-19
+
+### 关键功能
+- 回退 `smart_layout` 的多轮兜底求解策略，恢复为单轮求解流程。
+- 将 `sizeScale` 变量域收紧为 `0.3 ~ 1`。
+
+### 关键改动
+- `smart_layout/smart_layout_algorithm.h`
+  - 删除 `SolveMode` 及 `LayoutContext.solveMode`。
+- `smart_layout/smart_layout_algorithm.cpp`
+  - 删除 `SolveMode` 分支与多轮尝试逻辑。
+  - `PerformSmartLayout(...)` 恢复为单轮：初始化 -> 建模 -> 求解 -> 回写。
+  - `addColumnLayout/addRowLayout` 恢复为固定 `sizeScale == finalScale`（`min(mainAxisScale, crossAxisScale)`）。
+  - 末尾约束恢复严格贴边窗口（`+1 >= end` 与 `<= end` 同时存在）。
+- `smart_layout/smart_layout_node.h`
+  - `sizeScale` 变量域从 `[0,1]` 改为 `[0.3,1]`。
+- `SMART_LAYOUT_GUIDE.md`
+  - 同步文档到当前实现（单轮求解 + `sizeScale` 新区间）。
+
 ## 2026-03-18 (Linear Row/Column Bugfix)
 
 ### Highlights
