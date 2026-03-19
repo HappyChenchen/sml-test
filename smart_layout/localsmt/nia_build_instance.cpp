@@ -1,6 +1,7 @@
 #include "nia_ls.h"
-#include "../utils/matrix.h"
+#include "matrix.h"
 #include <sstream>
+#include <unordered_map>
 #define NLS_DEBUG
 namespace nia_overall
 {
@@ -82,6 +83,8 @@ namespace nia_overall
         prepare_soft_components_idx(soft_c_names);
         _num_vars = _vars.size();
         lit_appear.resize(_num_lits);
+        if (lits_in_cls != NULL)
+            delete lits_in_cls;
         lits_in_cls = new Array((int)_num_lits);
         record_info_after_read_file();
     }
@@ -123,6 +126,8 @@ namespace nia_overall
         prepare_soft_components_idx(soft_c_names);
         _num_vars = _vars.size();
         lit_appear.resize(_num_lits);
+        if (lits_in_cls != NULL)
+            delete lits_in_cls;
         lits_in_cls = new Array((int)_num_lits);
         record_info_after_read_file();
     }
@@ -1965,5 +1970,7 @@ namespace nia_overall
             delete contain_bool_unsat_clauses; // unsat clause with at least one boolean var
         if (false_lit_occur != NULL)
             delete false_lit_occur; // the false lits for choosing critical move
+        if (lits_in_cls != NULL)
+            delete lits_in_cls;
     }
 }

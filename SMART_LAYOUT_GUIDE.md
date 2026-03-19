@@ -119,3 +119,10 @@
 ## 7. 已知行为
 - `localsmt` 返回 `false` 不一定是严格数学 UNSAT，也可能是搜索未命中。
 - `sizeScale` 下界为 `0.3`，当理论所需缩放低于 `0.3` 时会直接无解。
+## 8. localsmt Notes (2026-03-19)
+- `Expr::operator<` / `operator>` now use strict integer mapping:
+  - `<` => `<= rhs - 1`
+  - `>` => `>= rhs + 1`
+- `Engine::add(..., strength)` keeps `strength` for metadata, but solving currently treats all active constraints as hard constraints.
+- `localsmt` source includes were normalized to local headers in this folder.
+- `lits_in_cls` now has explicit lifecycle cleanup to avoid leaks on repeated reads and solver destruction.

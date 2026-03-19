@@ -52,6 +52,9 @@ public:
     friend Expr operator-(double c, const Expr& e);
 
     // Comparison → Constraint
+    // Strict operators are interpreted in integer domain:
+    // a < b  => a <= b - 1
+    // a > b  => a >= b + 1
     Constraint operator<=(const Expr& rhs) const;
     Constraint operator>=(const Expr& rhs) const;
     Constraint operator==(const Expr& rhs) const;
@@ -142,6 +145,8 @@ public:
     // ── Constraints ──
 
     /// Add a constraint. Returns a literal handle for use in clauses.
+    /// localsmt currently solves all active constraints as hard constraints.
+    /// `strength` is kept for compatibility/inspection only.
     LitRef add(const Constraint& c, int strength = REQUIRED);
 
     /// Add a disjunctive clause: at least one literal must hold.

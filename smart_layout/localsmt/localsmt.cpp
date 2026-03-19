@@ -1,6 +1,6 @@
 #include "localsmt.h"
-#include "../solver_src/sls_solver_overall/nia_ls.h"
-#include "../solver_src/utils/ration_num.h"
+#include "nia_ls.h"
+#include "ration_num.h"
 #include <cmath>
 #include <algorithm>
 #include <set>
@@ -58,14 +58,16 @@ Expr operator-(double c, const Expr& e) { return Expr(c) - e; }
 Constraint Expr::operator<=(const Expr& rhs) const { return Constraint(*this, LEQ, rhs); }
 Constraint Expr::operator>=(const Expr& rhs) const { return Constraint(*this, GEQ, rhs); }
 Constraint Expr::operator==(const Expr& rhs) const { return Constraint(*this, EQ, rhs); }
-// Strict: x > rhs  →  x >= rhs + 1 (integer domain)
-Constraint Expr::operator<(const Expr& rhs) const { return Constraint(*this, LEQ, rhs); }
-Constraint Expr::operator>(const Expr& rhs) const { return Constraint(*this, GEQ, rhs); }
+// Strict operators in integer domain.
+// Strict inequality uses integer-domain mapping:
+// a < b => a <= b - 1, a > b => a >= b + 1.
+Constraint Expr::operator<(const Expr& rhs) const { return Constraint(*this, LEQ, rhs - Expr(1.0)); }
+Constraint Expr::operator>(const Expr& rhs) const { return Constraint(*this, GEQ, rhs + Expr(1.0)); }
 Constraint Expr::operator<=(double rhs) const { return Constraint(*this, LEQ, Expr(rhs)); }
 Constraint Expr::operator>=(double rhs) const { return Constraint(*this, GEQ, Expr(rhs)); }
 Constraint Expr::operator==(double rhs) const { return Constraint(*this, EQ, Expr(rhs)); }
-Constraint Expr::operator<(double rhs) const { return Constraint(*this, LEQ, Expr(rhs)); }
-Constraint Expr::operator>(double rhs) const { return Constraint(*this, GEQ, Expr(rhs)); }
+Constraint Expr::operator<(double rhs) const { return Constraint(*this, LEQ, Expr(rhs - 1.0)); }
+Constraint Expr::operator>(double rhs) const { return Constraint(*this, GEQ, Expr(rhs + 1.0)); }
 
 double Expr::value() const {
     if (!engine_) throw std::runtime_error("Expr not bound to an engine");
@@ -254,9 +256,11 @@ bool Engine::buildAndSolve(int width, int height) {
     std::vector<ActiveConstraint> active;
     int next_lit = 1;
 
+    // localsmt currently solves hard constraints only.
+    // Non-zero strengths are accepted for API compatibility but are not
+    // optimized as weighted soft constraints.
     for (size_t i = 0; i < constraints_.size(); i++) {
         if (constraints_[i].removed) continue;
-        if (constraints_[i].strength > 0) continue;
         active.push_back({i, constraints_[i].lit_id, next_lit++});
     }
 

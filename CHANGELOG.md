@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-03-19 (localsmt fixes)
+
+### Highlights
+- Fixed strict inequality operators in `localsmt::Expr` to use integer strict mapping.
+- Removed silent dropping of non-zero `strength` constraints during solve.
+- Fixed `lits_in_cls` lifecycle leaks and repaired local include paths so `smart_layout/localsmt` compiles as a standalone unit.
+
+### Key changes
+- `smart_layout/localsmt/localsmt.cpp`
+  - `<` now maps to `<= rhs - 1`, `>` maps to `>= rhs + 1` (integer-domain semantics).
+  - Active constraints no longer skip `strength > 0`; all non-removed constraints participate as hard constraints.
+  - Updated includes to local headers (`nia_ls.h`, `ration_num.h`).
+- `smart_layout/localsmt/localsmt.h`
+  - Clarified strict-operator semantics in API comments.
+  - Clarified that `strength` is currently compatibility metadata, not weighted soft optimization.
+- `smart_layout/localsmt/nia_build_instance.cpp`
+  - Added safe reallocation/deallocation for `lits_in_cls`.
+  - Destructor now releases `lits_in_cls`.
+  - Added missing `<unordered_map>` include.
+- `smart_layout/localsmt/nia_ls.h`
+  - Updated includes to local headers (`nia_Array.h`, `ration_num.h`).
+
 ## 2026-03-19
 
 ### 关键功能

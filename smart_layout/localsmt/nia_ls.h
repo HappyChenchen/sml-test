@@ -15,9 +15,9 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <string>
-#include "../utils/nia_Array.h"
+#include "nia_Array.h"
 #include <algorithm>
-#include "../utils/ration_num.h"
+#include "ration_num.h"
 
 namespace nia_overall
 {
