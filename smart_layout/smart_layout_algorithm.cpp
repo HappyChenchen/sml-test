@@ -124,14 +124,15 @@ void SmartLayoutAlgorithm::ProcessLayoutChildren(LayoutContext& context, LayoutW
         auto nestIt = std::next(it);
         bool isLast = (nestIt == children.end());
 
-        // 璁剧疆绗竴涓粍浠惰窛绂荤埗瀹瑰櫒top鐨勯棿璺?        if (isFirst) {
+        // 设置第一个组件距离父容器起点的间距。
+        if (isFirst) {
             if (context.layoutType == LayoutType::COLUMN) {
                 childNode->space_.top = childWrapper->GetGeometryNode()->GetFrameOffset().GetY();
             } else {
                 childNode->space_.left = childWrapper->GetGeometryNode()->GetFrameOffset().GetX();
             }
         }
-        // 璁＄畻鐩搁偦闂磋窛
+        // 计算相邻组件间距。
         if (!isLast) {
             const auto& nextChild = *nestIt;
             childNode->space_.bottom = CalculateChildSpacing(childWrapper, nextChild, context.layoutType);
@@ -140,7 +141,8 @@ void SmartLayoutAlgorithm::ProcessLayoutChildren(LayoutContext& context, LayoutW
                 childNode->space_.left = context.childrenLayoutNodes.back()->space_.right;
             }
         }
-        // 璁剧疆鏈€鍚庝竴涓粍浠惰窛绂荤埗瀹瑰櫒bottom鐨勯棿璺?        if (isLast) {
+        // 设置最后一个组件距离父容器终点的间距。
+        if (isLast) {
             if (context.layoutType == LayoutType::COLUMN) {
                 childNode->space_.bottom = context.parentSize.Height() -
                     (childWrapper->GetGeometryNode()->GetFrameOffset().GetY() +
@@ -152,12 +154,12 @@ void SmartLayoutAlgorithm::ProcessLayoutChildren(LayoutContext& context, LayoutW
             }
         }
 
-        // 璁剧疆灏哄淇℃伅
+        // 设置尺寸信息。
         auto childSize = childWrapper->GetGeometryNode()->GetFrameSize();
         childNode->size_.width.value = childSize.Width();
         childNode->size_.height.value = childSize.Height();
 
-        // 澶勭悊绌虹櫧鑺傜偣
+        // 处理 Blank 节点。
         if (childWrapper->GetHostTag() == "Blank") {
             childNode->space_.bottom += childNode->size_.height.value;
             childNode->size_.height.value = 0;
@@ -268,7 +270,7 @@ bool SmartLayoutAlgorithm::InitializeLayoutContext(LayoutContext& context, Layou
 
     context.layoutType = layoutType;
 
-    // parent size 鈥?take from geometry node if present, otherwise from layout constraint
+    // parent size：优先取 geometry node，否则回落为 0。
     auto geo = layoutWrapper->GetGeometryNode();
     if (geo) {
         context.parentSize = geo->GetFrameSize();
@@ -323,8 +325,26 @@ void SmartLayoutAlgorithm::AddColumnConstraints(LayoutContext& context, const st
     }
     AddDefaultConstraints(context, parent);
     double sumOfAllChildHeight = GetSumOfAllChildHeight(parent);
-    if (sumOfAllChildHeight > context.parentSize.Height()) {
-        context.engine.add(parent->scaleInfo_.spaceScale.expr == context.parentSize.Height() / sumOfAllChildHeight);
+    double compressibleGapSum = 0.0;
+    if (!parent->children_.empty()) {
+        compressibleGapSum += std::max(0.0, parent->children_.front()->space_.top);
+        for (size_t i = 1; i < parent->children_.size(); ++i) {
+            const auto& prev = parent->children_[i - 1];
+            if (prev == nullptr) {
+                continue;
+            }
+            compressibleGapSum += std::max(0.0, prev->space_.bottom);
+        }
+    }
+    const double totalNeed = sumOfAllChildHeight + compressibleGapSum;
+    const double parentMainSize = context.parentSize.Height();
+    if (totalNeed > parentMainSize) {
+        if (compressibleGapSum > 0.0) {
+            const double targetScale = (parentMainSize - sumOfAllChildHeight) / compressibleGapSum;
+            context.engine.add(parent->scaleInfo_.spaceScale.expr == ClampValue(static_cast<float>(targetScale), 0.0f, 1.0f));
+        } else {
+            context.engine.add(parent->scaleInfo_.spaceScale.expr == ((sumOfAllChildHeight > parentMainSize) ? 0.0 : 1.0));
+        }
     } else {
         context.engine.add(parent->scaleInfo_.spaceScale.expr == 1.0);
     }
@@ -332,8 +352,8 @@ void SmartLayoutAlgorithm::AddColumnConstraints(LayoutContext& context, const st
     // Ensure parent's spaceScale is in [0,1]
     context.engine.add(parent->scaleInfo_.spaceScale.expr >= 0.0);
     context.engine.add(parent->scaleInfo_.spaceScale.expr <= 1.0);
-    LOGD("cy_debug AddColumnConstraints childCount=%{public}zu sumHeight=%{public}f parentH=%{public}f",
-        parent->children_.size(), sumOfAllChildHeight, context.parentSize.Height());
+    LOGD("cy_debug AddColumnConstraints childCount=%{public}zu sizeSum=%{public}f gapSum=%{public}f totalNeed=%{public}f parentH=%{public}f",
+        parent->children_.size(), sumOfAllChildHeight, compressibleGapSum, totalNeed, context.parentSize.Height());
 
     for (size_t i = 0; i < parent->children_.size(); ++i) {
         auto& child = parent->children_[i];
@@ -392,11 +412,31 @@ void SmartLayoutAlgorithm::AddRowConstraints(LayoutContext& context, const std::
     // compute sum of all child widths
     double sumOfAllChildWidth = 0.0;
     for (const auto& c : parent->children_) {
+        if (c == nullptr) {
+            continue;
+        }
         sumOfAllChildWidth += c->size_.width.value;
     }
-
-    if (sumOfAllChildWidth > context.parentSize.Width()) {
-        context.engine.add(parent->scaleInfo_.spaceScale.expr == context.parentSize.Width() / sumOfAllChildWidth);
+    double compressibleGapSum = 0.0;
+    if (!parent->children_.empty()) {
+        compressibleGapSum += std::max(0.0, parent->children_.front()->space_.left);
+        for (size_t i = 1; i < parent->children_.size(); ++i) {
+            const auto& prev = parent->children_[i - 1];
+            if (prev == nullptr) {
+                continue;
+            }
+            compressibleGapSum += std::max(0.0, prev->space_.right);
+        }
+    }
+    const double totalNeed = sumOfAllChildWidth + compressibleGapSum;
+    const double parentMainSize = context.parentSize.Width();
+    if (totalNeed > parentMainSize) {
+        if (compressibleGapSum > 0.0) {
+            const double targetScale = (parentMainSize - sumOfAllChildWidth) / compressibleGapSum;
+            context.engine.add(parent->scaleInfo_.spaceScale.expr == ClampValue(static_cast<float>(targetScale), 0.0f, 1.0f));
+        } else {
+            context.engine.add(parent->scaleInfo_.spaceScale.expr == ((sumOfAllChildWidth > parentMainSize) ? 0.0 : 1.0));
+        }
     } else {
         context.engine.add(parent->scaleInfo_.spaceScale.expr == 1.0);
     }
@@ -404,8 +444,8 @@ void SmartLayoutAlgorithm::AddRowConstraints(LayoutContext& context, const std::
     // Ensure parent's spaceScale is in [0,1]
     context.engine.add(parent->scaleInfo_.spaceScale.expr >= 0.0);
     context.engine.add(parent->scaleInfo_.spaceScale.expr <= 1.0);
-    LOGD("cy_debug AddRowConstraints childCount=%{public}zu sumWidth=%{public}f parentW=%{public}f",
-        parent->children_.size(), sumOfAllChildWidth, context.parentSize.Width());
+    LOGD("cy_debug AddRowConstraints childCount=%{public}zu sizeSum=%{public}f gapSum=%{public}f totalNeed=%{public}f parentW=%{public}f",
+        parent->children_.size(), sumOfAllChildWidth, compressibleGapSum, totalNeed, context.parentSize.Width());
 
     for (size_t i = 0; i < parent->children_.size(); ++i) {
         auto& child = parent->children_[i];
@@ -501,6 +541,9 @@ double SmartLayoutAlgorithm::GetSumOfAllChildHeight(const std::shared_ptr<SmartL
 {
     double sumOfAllChildHeight = 0.0;
     for (const auto& c : parent->children_) {
+        if (c == nullptr) {
+            continue;
+        }
         sumOfAllChildHeight += c->size_.height.value;
     }
     return sumOfAllChildHeight;
