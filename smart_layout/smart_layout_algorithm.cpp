@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 
+#include <algorithm>
 #include <codecvt>
 #include <string>
 #include "core/components_ng/pattern/flex/flex_layout_property.h"
@@ -56,27 +57,31 @@ void SmartLayoutAlgorithm::AddDefaultConstraints(localsmt::Engine& engine, std::
 void SmartLayoutAlgorithm::addColumnLayout(LayoutContext& context, std::shared_ptr<SmartLayoutNode> parent)
 {
     float sumOfAllChildHeight = GetSumOfAllChildHeight(parent);
-    if (sumOfAllChildHeight > parent->size_.height.value) {
-        context.engine.add(parent->scaleInfo_.sizeScale.expr ==
-            static_cast<double>(parent->size_.height.value / sumOfAllChildHeight));
-    } else {
-        context.engine.add(parent->scaleInfo_.sizeScale.expr == 1);
+    float maxChildWidth = 0;
+    for (const auto& child : parent->childNode) {
+        maxChildWidth = std::max(maxChildWidth, child->size_.width.value);
     }
+
+    float mainAxisScale = 1.0f;
+    if (sumOfAllChildHeight > parent->size_.height.value && sumOfAllChildHeight > 0) {
+        mainAxisScale = parent->size_.height.value / sumOfAllChildHeight;
+    }
+    float crossAxisScale = 1.0f;
+    if (maxChildWidth > parent->size_.width.value && maxChildWidth > 0) {
+        crossAxisScale = parent->size_.width.value / maxChildWidth;
+    }
+    float finalScale = std::min(mainAxisScale, crossAxisScale);
+    context.engine.add(parent->scaleInfo_.sizeScale.expr == static_cast<double>(finalScale));
 
     context.engine.add(parent->scaleInfo_.spaceScale.expr >= 0);
     context.engine.add(parent->scaleInfo_.spaceScale.expr <= 1);
 
     for (size_t i = 0; i < parent->childNode.size(); ++i) {
         std::shared_ptr<SmartLayoutNode> child = parent->childNode[i];
-        if (sumOfAllChildHeight > parent->size_.height.value) {
-            context.engine.add(child->size_.width.expr * sumOfAllChildHeight ==
-                static_cast<double>(child->size_.width.value) * parent->size_.height.value);
-            context.engine.add(child->size_.height.expr  * sumOfAllChildHeight  ==
-                static_cast<double>(child->size_.height.value) * parent->size_.height.value);
-        } else {
-            context.engine.add(child->size_.width.expr == static_cast<double>(child->size_.width.value));
-            context.engine.add(child->size_.height.expr == static_cast<double>(child->size_.height.value));
-        }
+        context.engine.add(child->size_.width.expr ==
+            static_cast<double>(child->size_.width.value) * parent->scaleInfo_.sizeScale.expr);
+        context.engine.add(child->size_.height.expr ==
+            static_cast<double>(child->size_.height.value) * parent->scaleInfo_.sizeScale.expr);
 
         // 默认约束
         AddDefaultConstraints(context.engine, parent, child);
@@ -114,27 +119,31 @@ void SmartLayoutAlgorithm::addColumnLayout(LayoutContext& context, std::shared_p
 void SmartLayoutAlgorithm::addRowLayout(LayoutContext& context, std::shared_ptr<SmartLayoutNode> parent)
 {
     float sumOfAllChildWidth = GetSumOfAllChildWidth(parent);
-    if (sumOfAllChildWidth > parent->size_.width.value) {
-        context.engine.add(parent->scaleInfo_.sizeScale.expr ==
-            static_cast<double>(parent->size_.width.value / sumOfAllChildWidth));
-    } else {
-        context.engine.add(parent->scaleInfo_.sizeScale.expr == 1);
+    float maxChildHeight = 0;
+    for (const auto& child : parent->childNode) {
+        maxChildHeight = std::max(maxChildHeight, child->size_.height.value);
     }
+
+    float mainAxisScale = 1.0f;
+    if (sumOfAllChildWidth > parent->size_.width.value && sumOfAllChildWidth > 0) {
+        mainAxisScale = parent->size_.width.value / sumOfAllChildWidth;
+    }
+    float crossAxisScale = 1.0f;
+    if (maxChildHeight > parent->size_.height.value && maxChildHeight > 0) {
+        crossAxisScale = parent->size_.height.value / maxChildHeight;
+    }
+    float finalScale = std::min(mainAxisScale, crossAxisScale);
+    context.engine.add(parent->scaleInfo_.sizeScale.expr == static_cast<double>(finalScale));
 
     context.engine.add(parent->scaleInfo_.spaceScale.expr >= 0);
     context.engine.add(parent->scaleInfo_.spaceScale.expr <= 1);
 
     for (size_t i = 0; i < parent->childNode.size(); ++i) {
         std::shared_ptr<SmartLayoutNode> child = parent->childNode[i];
-        if (sumOfAllChildWidth > parent->size_.width.value) {
-            context.engine.add(child->size_.width.expr * sumOfAllChildWidth ==
-                static_cast<double>(child->size_.width.value) * parent->size_.width.value);
-            context.engine.add(child->size_.height.expr * sumOfAllChildWidth ==
-                static_cast<double>(child->size_.height.value) * parent->size_.width.value);
-        } else {
-            context.engine.add(child->size_.width.expr == static_cast<double>(child->size_.width.value));
-            context.engine.add(child->size_.height.expr == static_cast<double>(child->size_.height.value));
-        }
+        context.engine.add(child->size_.width.expr ==
+            static_cast<double>(child->size_.width.value) * parent->scaleInfo_.sizeScale.expr);
+        context.engine.add(child->size_.height.expr ==
+            static_cast<double>(child->size_.height.value) * parent->scaleInfo_.sizeScale.expr);
 
         AddDefaultConstraints(context.engine, parent, child);
 
