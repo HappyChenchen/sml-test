@@ -1,6 +1,85 @@
 #include "smart_layout_algorithm.h"
 
+#include <algorithm>
+
 namespace HHHH::HHH::HH {
+
+namespace {
+
+float Clamp01(float value)
+{
+    return std::max(0.0f, std::min(1.0f, value));
+}
+
+float ComputeMergedSizeScale(const std::shared_ptr<SmartLayoutNode>& parent, LayoutType layoutType)
+{
+    const bool isColumn = (layoutType == LayoutType::COLUMN);
+    const float parentMain = isColumn ? parent->size_.height.value : parent->size_.width.value;
+    const float parentCross = isColumn ? parent->size_.width.value : parent->size_.height.value;
+
+    float sumMain = 0.0f;
+    float maxCross = 0.0f;
+    for (const auto& child : parent->childNode) {
+        const float mainSize = isColumn ? child->size_.height.value : child->size_.width.value;
+        const float crossSize = isColumn ? child->size_.width.value : child->size_.height.value;
+        sumMain += std::max(mainSize, 0.0f);
+        maxCross = std::max(maxCross, std::max(crossSize, 0.0f));
+    }
+
+    const float mainScale = (sumMain > 0.0f) ? Clamp01(parentMain / sumMain) : 1.0f;
+    const float crossScale = (maxCross > 0.0f) ? Clamp01(parentCross / maxCross) : 1.0f;
+    return std::min(mainScale, crossScale);
+}
+
+float ComputeMainSpaceScale(const std::shared_ptr<SmartLayoutNode>& parent, LayoutType layoutType, float sizeScale)
+{
+    const bool isColumn = (layoutType == LayoutType::COLUMN);
+    const float parentMain = isColumn ? parent->size_.height.value : parent->size_.width.value;
+
+    float scaledMainSum = 0.0f;
+    for (const auto& child : parent->childNode) {
+        const float mainSize = isColumn ? child->size_.height.value : child->size_.width.value;
+        scaledMainSum += std::max(mainSize, 0.0f) * sizeScale;
+    }
+
+    float gapBase = 0.0f;
+    if (isColumn) {
+        if (!parent->childNode.empty()) {
+            gapBase += std::max(0.0f, parent->childNode.front()->edgesSpace_.top);
+            for (size_t i = 1; i < parent->childNode.size(); ++i) {
+                gapBase += std::max(0.0f, parent->childNode[i - 1]->edgesSpace_.bottom);
+            }
+        }
+    } else {
+        if (parent->childNode.size() > 1) {
+            gapBase = static_cast<float>(parent->childNode.size() - 1);
+        }
+    }
+
+    const float remain = parentMain - scaledMainSum;
+    if (gapBase <= 0.0f) {
+        return (remain >= 0.0f) ? 1.0f : 0.0f;
+    }
+    return Clamp01(remain / gapBase);
+}
+
+void ApplyFallbackLayout(LayoutWrapper* layoutWrapper, float scale)
+{
+    const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
+    for (const auto& child : children) {
+        child->GetGeometryNode()->SetFrameOffset(OffsetF(0.0f, 0.0f));
+        if (child->GetHostNode() != nullptr) {
+            Dimension offsetX(0.0, DimensionUnit::PERCENT);
+            Dimension offsetY(0.0, DimensionUnit::PERCENT);
+            child->GetHostNode()->GetRenderContext()->UpdateTransformCenter(DimensionOffset(offsetX, offsetY));
+            child->GetHostNode()->GetRenderContext()->UpdateTransformScale({ scale, scale });
+            child->GetHostNode()->MarkDirtyNode(NG::PROPERTY_UPDATE_LAYOUT);
+        }
+        child->Layout();
+    }
+}
+
+} // namespace
 
 // static constexpr double MIN_SIZE_SCALE = 0.0;
 
@@ -30,33 +109,28 @@ void SmartLayoutAlgorithm::AddDefaultConstraints(localsmt::Engine& engine, std::
 
 void SmartLayoutAlgorithm::addColumnLayout(LayoutContext& context, std::shared_ptr<SmartLayoutNode> parent)
 {
-    float sumOfAllChildHeight = GetSumOfAllChildHeight(parent);
-    if (sumOfAllChildHeight > parent->size_.height.value) {
-        context.engine.add(parent->scaleInfo_.sizeScale.expr ==
-            static_cast<double>(parent->size_.height.value / sumOfAllChildHeight));
-    } else {
-        context.engine.add(parent->scaleInfo_.sizeScale.expr == 1);
-    }
+    const float sizeScale = ComputeMergedSizeScale(parent, LayoutType::COLUMN);
+    const float spaceScale = ComputeMainSpaceScale(parent, LayoutType::COLUMN, sizeScale);
+    context.engine.add(parent->scaleInfo_.sizeScale.expr == static_cast<double>(sizeScale));
 
     context.engine.add(parent->scaleInfo_.spaceScale.expr >= 0);
     context.engine.add(parent->scaleInfo_.spaceScale.expr <= 1);
+    context.engine.add(parent->scaleInfo_.spaceScale.expr == static_cast<double>(spaceScale));
 
     for (size_t i = 0; i < parent->childNode.size(); ++i) {
         std::shared_ptr<SmartLayoutNode> child = parent->childNode[i];
-        if (sumOfAllChildHeight > parent->size_.height.value) {
-            context.engine.add(child->size_.width.expr * sumOfAllChildHeight ==
-                static_cast<double>(child->size_.width.value) * parent->size_.height.value);
-            context.engine.add(child->size_.height.expr  * sumOfAllChildHeight  ==
-                static_cast<double>(child->size_.height.value) * parent->size_.height.value);
-        } else {
-            context.engine.add(child->size_.width.expr == static_cast<double>(child->size_.width.value));
-            context.engine.add(child->size_.height.expr == static_cast<double>(child->size_.height.value));
-        }
+        context.engine.add(child->size_.width.expr ==
+            static_cast<double>(child->size_.width.value) * parent->scaleInfo_.sizeScale.expr);
+        context.engine.add(child->size_.height.expr ==
+            static_cast<double>(child->size_.height.value) * parent->scaleInfo_.sizeScale.expr);
 
         // 默认约束
         AddDefaultConstraints(context.engine, parent, child);
         if (context.crossAxisAlign_ == FlexAlign::FLEX_START) {
             context.engine.add(child->position_.offsetX.expr == parent->position_.offsetX.expr);
+        } else if (context.crossAxisAlign_ == FlexAlign::FLEX_END) {
+            context.engine.add(child->position_.offsetX.expr + child->size_.width.expr ==
+                parent->position_.offsetX.expr + parent->size_.width.expr);
         } else {
             context.engine.add(child->position_.offsetX.expr - parent->position_.offsetX.expr ==
                       parent->position_.offsetX.expr + parent->size_.width.expr -
@@ -74,24 +148,18 @@ void SmartLayoutAlgorithm::addColumnLayout(LayoutContext& context, std::shared_p
                       prev->size_.height.expr + prev->edgesSpace_.bottom * parent->scaleInfo_.spaceScale.expr);
         }
 
-        if (i == parent->childNode.size() - 1) {
-            context.engine.add(child->position_.offsetY.expr + child->size_.height.expr + 1 >=
-                parent->position_.offsetY.expr + parent->size_.height.expr);
-            context.engine.add(child->position_.offsetY.expr + child->size_.height.expr <=
-                parent->position_.offsetY.expr + parent->size_.height.expr);
-        }
+        // 末尾不再做“必须贴底边”的硬等式，避免无解。
     }
 }
 
 void SmartLayoutAlgorithm::addRowLayout(LayoutContext& context, std::shared_ptr<SmartLayoutNode> parent)
 {
-    float sumOfAllChildHeight = GetSumOfAllChildHeight(parent);
-    if (sumOfAllChildHeight > parent->size_.height.value) {
-        context.engine.add(parent->scaleInfo_.sizeScale.expr ==
-            static_cast<double>(parent->size_.height.value / sumOfAllChildHeight));
-    } else {
-        context.engine.add(parent->scaleInfo_.sizeScale.expr == 1);
-    }
+    const float sizeScale = ComputeMergedSizeScale(parent, LayoutType::ROW);
+    const float spaceScale = ComputeMainSpaceScale(parent, LayoutType::ROW, sizeScale);
+    context.engine.add(parent->scaleInfo_.sizeScale.expr == static_cast<double>(sizeScale));
+    context.engine.add(parent->scaleInfo_.spaceScale.expr >= 0);
+    context.engine.add(parent->scaleInfo_.spaceScale.expr <= 1);
+    context.engine.add(parent->scaleInfo_.spaceScale.expr == static_cast<double>(spaceScale));
 
     for (size_t i = 0; i < parent->childNode.size(); ++i) {
         std::shared_ptr<SmartLayoutNode> child = parent->childNode[i];
@@ -126,10 +194,7 @@ void SmartLayoutAlgorithm::addRowLayout(LayoutContext& context, std::shared_ptr<
                       prev->size_.width.expr + parent->scaleInfo_.spaceScale.expr);
         }
 
-        if (i == parent->childNode.size() - 1) {
-                context.engine.add(child->position_.offsetX.expr + child->size_.width.expr ==
-                    parent->position_.offsetX.expr + parent->size_.width.expr);
-        }
+        // 末尾不再做“必须贴右边”的硬等式，避免无解。
     }
 }
 
@@ -188,7 +253,9 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
 {
     LayoutContext context;
     // 初始化布局上下文
-    InitializeLayoutContext(context, layoutWrapper, layoutType);
+    if (!InitializeLayoutContext(context, layoutWrapper, layoutType)) {
+        return;
+    }
     // 处理子节点
     ProcessLayoutChildren(context, layoutWrapper);
     // 应用约束
@@ -196,6 +263,8 @@ void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, Layo
     // 求解布局
     if (!SolveLayout(context)) {
         LOGE("cr_debug localsmt failed to find solution!");
+        // 兜底：保证布局阶段可继续，避免无解导致流程中断。
+        ApplyFallbackLayout(layoutWrapper, 0.0f);
         return;
     }
     
