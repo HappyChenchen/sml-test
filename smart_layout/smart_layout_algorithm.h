@@ -40,8 +40,6 @@ public:
     LayoutType layoutType;
     FlexAlign mainAxisAlign = FlexAlign::FLEX_START;
     FlexAlign crossAxisAlign = FlexAlign::FLEX_START;
-    HorizontalAlign horizontalAlign = HorizontalAlign::CENTER;
-    VerticalAlign verticalAlign = VerticalAlign::CENTER;
     SizeF parentSize;
     std::vector<std::shared_ptr<SmartLayoutNode>> childrenLayoutNodes;
     std::shared_ptr<SmartLayoutNode> currentLayoutNode;
@@ -72,8 +70,6 @@ private:
 
     void ItemScaling(const RefPtr<LayoutWrapper>& item, double scale);
     double GetSumOfAllChildHeight(const std::shared_ptr<SmartLayoutNode> parent);
-    void ApplyMinimalFallback(LayoutWrapper* layoutWrapper, LayoutType layoutType);
-    static float ClampValue(float value, float low, float high);
 };
 
 } // namespace OHOS::Ace::NG
