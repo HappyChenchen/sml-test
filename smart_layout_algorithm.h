@@ -22,6 +22,12 @@ private:
     // 通用流程：读取属性 -> 建模 -> 求解 -> 回写。
     void PerformSmartLayout(LayoutWrapper* layoutWrapper, LayoutType layoutType);
 
+    // 侧轴基线对齐方式：
+    // - COLUMN -> HorizontalAlign
+    // - ROW -> VerticalAlign
+    HorizontalAlign horizontalAlign_ = HorizontalAlign::CENTER;
+    VerticalAlign verticalAlign_ = VerticalAlign::CENTER;
+
     // Column/Row 共用主轴建模。
     void addColumnLayout(z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent);
     void addRowLayout(z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent);

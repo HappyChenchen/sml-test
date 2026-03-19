@@ -49,22 +49,51 @@ void SmartLayoutAlgorithm::AddCrossAxisAlignmentConstraints(
     std::shared_ptr<SmartLayoutNode> child,
     LayoutType layoutType)
 {
-    // 侧轴规则：不再使用对齐枚举与 margin，直接按“原始 offset 到父起点距离”缩放。
-    // - COLUMN：缩放 X 方向前导间距
-    // - ROW：缩放 Y 方向前导间距
+    // 侧轴规则：
+    // 1) 先根据对齐方式确定“基线”（START/CENTER/END 或 TOP/CENTER/BOTTOM）。
+    // 2) 再把原始侧轴间距（相对基线的偏移）按 crossSpaceScale 还原/压缩。
     if (layoutType == LayoutType::COLUMN) {
-        const float crossLeadingGapRaw = child->position_.offsetX.value - parent->position_.offsetX.value;
-        const float crossLeadingGap = (crossLeadingGapRaw > 0.0f) ? crossLeadingGapRaw : 0.0f;
+        const float parentCrossPosBase = parent->position_.offsetX.value;
+        const float parentCrossSizeBase = parent->size_.width.value;
+        const float childCrossPosBase = child->position_.offsetX.value;
+        const float childCrossSizeBase = child->size_.width.value;
+
+        float baselineBase = parentCrossPosBase;
+        z3::expr baselineExpr = parent->position_.offsetX.expr;
+        if (horizontalAlign_ == HorizontalAlign::CENTER) {
+            baselineBase = parentCrossPosBase + (parentCrossSizeBase - childCrossSizeBase) * 0.5f;
+            baselineExpr = parent->position_.offsetX.expr +
+                (parent->size_.width.expr - child->size_.width.expr) / solver.ctx().real_val("2");
+        } else if (horizontalAlign_ == HorizontalAlign::END) {
+            baselineBase = parentCrossPosBase + parentCrossSizeBase - childCrossSizeBase;
+            baselineExpr = parent->position_.offsetX.expr + parent->size_.width.expr - child->size_.width.expr;
+        }
+
+        const float restoredGap = childCrossPosBase - baselineBase;
         solver.add(child->position_.offsetX.expr ==
-            parent->position_.offsetX.expr +
-            Float2Expr(solver, crossLeadingGap) * parent->scaleInfo_.crossSpaceScale.expr);
+            baselineExpr + Float2Expr(solver, restoredGap) * parent->scaleInfo_.crossSpaceScale.expr);
         return;
     }
-    const float crossLeadingGapRaw = child->position_.offsetY.value - parent->position_.offsetY.value;
-    const float crossLeadingGap = (crossLeadingGapRaw > 0.0f) ? crossLeadingGapRaw : 0.0f;
+
+    const float parentCrossPosBase = parent->position_.offsetY.value;
+    const float parentCrossSizeBase = parent->size_.height.value;
+    const float childCrossPosBase = child->position_.offsetY.value;
+    const float childCrossSizeBase = child->size_.height.value;
+
+    float baselineBase = parentCrossPosBase;
+    z3::expr baselineExpr = parent->position_.offsetY.expr;
+    if (verticalAlign_ == VerticalAlign::CENTER) {
+        baselineBase = parentCrossPosBase + (parentCrossSizeBase - childCrossSizeBase) * 0.5f;
+        baselineExpr = parent->position_.offsetY.expr +
+            (parent->size_.height.expr - child->size_.height.expr) / solver.ctx().real_val("2");
+    } else if (verticalAlign_ == VerticalAlign::BOTTOM) {
+        baselineBase = parentCrossPosBase + parentCrossSizeBase - childCrossSizeBase;
+        baselineExpr = parent->position_.offsetY.expr + parent->size_.height.expr - child->size_.height.expr;
+    }
+
+    const float restoredGap = childCrossPosBase - baselineBase;
     solver.add(child->position_.offsetY.expr ==
-        parent->position_.offsetY.expr +
-        Float2Expr(solver, crossLeadingGap) * parent->scaleInfo_.crossSpaceScale.expr);
+        baselineExpr + Float2Expr(solver, restoredGap) * parent->scaleInfo_.crossSpaceScale.expr);
 }
 void SmartLayoutAlgorithm::addLinearLayout(
     z3::optimize& solver, std::shared_ptr<SmartLayoutNode> parent, LayoutType layoutType)
@@ -115,8 +144,9 @@ void SmartLayoutAlgorithm::addLinearLayout(
 
         const float childCrossPos = isColumn ? child->position_.offsetX.value : child->position_.offsetY.value;
         const float parentCrossPos = isColumn ? parent->position_.offsetX.value : parent->position_.offsetY.value;
-        const float crossLead = std::max(0.0f, childCrossPos - parentCrossPos);
-        if (crossLead + std::max(childCrossSize, 0.0f) > parentCrossSize) {
+        const float parentCrossEnd = parentCrossPos + parentCrossSize;
+        const float childCrossEnd = childCrossPos + std::max(childCrossSize, 0.0f);
+        if (childCrossPos < parentCrossPos || childCrossEnd > parentCrossEnd) {
             crossOverflow = true;
         }
     }
@@ -191,7 +221,26 @@ SizeF SmartLayoutAlgorithm::ItermScale(const RefPtr<LayoutWrapper>& iterm, float
 
 void SmartLayoutAlgorithm::PerformSmartLayout(LayoutWrapper* layoutWrapper, LayoutType layoutType)
 {
-    // 1：读取子节点
+    // 1：读取布局属性与子节点
+    auto layoutProperty = AceType::DynamicCast<FlexLayoutProperty>(layoutWrapper->GetLayoutProperty());
+    CHECK_NULL_VOID(layoutProperty);
+    FlexAlign crossAxisAlign = layoutProperty->GetCrossAxisAlignValue(FlexAlign::CENTER);
+    switch (crossAxisAlign) {
+        case FlexAlign::FLEX_START:
+            horizontalAlign_ = HorizontalAlign::START;
+            verticalAlign_ = VerticalAlign::TOP;
+            break;
+        case FlexAlign::FLEX_END:
+            horizontalAlign_ = HorizontalAlign::END;
+            verticalAlign_ = VerticalAlign::BOTTOM;
+            break;
+        case FlexAlign::CENTER:
+        default:
+            horizontalAlign_ = HorizontalAlign::CENTER;
+            verticalAlign_ = VerticalAlign::CENTER;
+            break;
+    }
+
     const auto& children = layoutWrapper->GetAllChildrenWithBuild(false);
     if (children.empty()) {
         return;
