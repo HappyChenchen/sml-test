@@ -73,6 +73,7 @@ private:
     bool IsColumnSpaceEnough(LayoutWrapper* layoutWrapper);
     SizeF ItermScale(const RefPtr<LayoutWrapper>& iterm, float scale);
     float GetSumOfAllChildHeight(std::shared_ptr<SmartLayoutNode> parent);
+    float GetSumOfAllChildWidth(std::shared_ptr<SmartLayoutNode> parent);
 };
 
 } // namespace OHOS::Ace::NG
